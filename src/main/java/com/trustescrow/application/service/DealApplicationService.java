@@ -91,8 +91,7 @@ public class DealApplicationService {
             template.getTemplateJson()
         );
         
-        deal.setContractInstanceId(instance.getId());
-        deal = dealRepository.save(deal);
+        deal = dealRepository.save(withContractInstanceId(deal, instance.getId()));
         
         return deal;
     }
@@ -260,5 +259,26 @@ public class DealApplicationService {
         // Mark deal as having dispute
         deal.setDisputeOpen(true);
         dealRepository.save(deal);
+    }
+
+    private Deal withContractInstanceId(Deal deal, UUID contractInstanceId) {
+        return Deal.builder()
+            .id(deal.getId())
+            .buyerId(deal.getBuyerId())
+            .sellerId(deal.getSellerId())
+            .itemRef(deal.getItemRef())
+            .category(deal.getCategory())
+            .totalAmount(deal.getTotalAmount())
+            .immediateAmount(deal.getImmediateAmount())
+            .holdbackAmount(deal.getHoldbackAmount())
+            .currency(deal.getCurrency())
+            .state(deal.getState())
+            .contractInstanceId(contractInstanceId)
+            .createdAt(deal.getCreatedAt())
+            .updatedAt(Instant.now())
+            .inspectionStartedAt(deal.getInspectionStartedAt())
+            .issueRaisedAt(deal.getIssueRaisedAt())
+            .disputeOpen(deal.getDisputeOpen())
+            .build();
     }
 }
