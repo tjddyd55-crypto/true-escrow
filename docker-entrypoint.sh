@@ -1,11 +1,11 @@
-#!/bin/sh
+#!/usr/bin/env sh
 set -e
 
 echo "===== ENTRYPOINT START ====="
 echo "DATABASE_URL=$DATABASE_URL"
 echo "SPRING_DATASOURCE_URL=$SPRING_DATASOURCE_URL"
 
-normalize() {
+normalize_jdbc_url() {
   case "$1" in
     jdbc:*)
       echo "$1"
@@ -23,12 +23,14 @@ normalize() {
 }
 
 if [ -n "$SPRING_DATASOURCE_URL" ]; then
-  export SPRING_DATASOURCE_URL="$(normalize "$SPRING_DATASOURCE_URL")"
+  SPRING_DATASOURCE_URL="$(normalize_jdbc_url "$SPRING_DATASOURCE_URL")"
+  export SPRING_DATASOURCE_URL
 elif [ -n "$DATABASE_URL" ]; then
-  export SPRING_DATASOURCE_URL="$(normalize "$DATABASE_URL")"
+  SPRING_DATASOURCE_URL="$(normalize_jdbc_url "$DATABASE_URL")"
+  export SPRING_DATASOURCE_URL
 fi
 
-echo "FINAL JDBC URL=$SPRING_DATASOURCE_URL"
+echo "SPRING_DATASOURCE_URL=$SPRING_DATASOURCE_URL"
 echo "===== ENTRYPOINT END ====="
 
-exec "$@"
+exec java $JAVA_OPTS -jar /app/app.jar
