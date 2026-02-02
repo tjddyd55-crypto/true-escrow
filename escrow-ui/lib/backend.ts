@@ -1,7 +1,7 @@
 // Backend API wrapper
 // 실제 백엔드 escrow 서버와 통신하는 함수들
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080";
 
 export async function createDeal(template: string) {
   const res = await fetch(`${API_BASE_URL}/api/deals`, {

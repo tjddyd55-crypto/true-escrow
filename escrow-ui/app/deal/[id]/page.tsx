@@ -7,6 +7,7 @@ export default function DealDetail() {
   const params = useParams();
   const [deal, setDeal] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     fetch(`/api/deals/${params.id}`)
@@ -23,6 +24,25 @@ export default function DealDetail() {
         setError(err.message);
       });
   }, [params.id]);
+
+  async function proceedPayment(dealId: string) {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/deals/${dealId}/checkout`, {
+        method: "POST",
+      });
+      const data = await res.json();
+      if (data.error) {
+        setError(data.error);
+        setLoading(false);
+      } else {
+        window.location.href = data.checkoutUrl;
+      }
+    } catch (err: any) {
+      setError(err.message);
+      setLoading(false);
+    }
+  }
 
   if (error) {
     return (
@@ -69,15 +89,16 @@ export default function DealDetail() {
             By proceeding to payment, funds will be held in escrow.
           </p>
 
-          {m.checkoutUrl ? (
-            <a href={m.checkoutUrl} target="_blank" rel="noopener noreferrer">
-              <button>Proceed Payment</button>
-            </a>
-          ) : (
-            <button disabled style={{ opacity: 0.5, cursor: "not-allowed" }}>
-              Payment Unavailable
-            </button>
-          )}
+          <button 
+            onClick={() => proceedPayment(params.id as string)}
+            disabled={loading}
+            style={{ 
+              opacity: loading ? 0.5 : 1, 
+              cursor: loading ? "not-allowed" : "pointer" 
+            }}
+          >
+            {loading ? "Processing..." : "Proceed Payment"}
+          </button>
         </div>
       ))}
     </main>

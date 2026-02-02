@@ -1,0 +1,24 @@
+# Production profile configuration
+# Datasource values must come from environment variables
+
+spring:
+  datasource:
+    driver-class-name: org.postgresql.Driver
+    url: ${SPRING_DATASOURCE_URL:${DATABASE_URL:}}
+    username: ${SPRING_DATASOURCE_USERNAME:}
+    password: ${SPRING_DATASOURCE_PASSWORD:}
+    hikari:
+      # Allow app to start even if DB is temporarily unavailable
+      initialization-fail-timeout: 0
+  sql:
+    init:
+      mode: never
+  jpa:
+    hibernate:
+      ddl-auto: none
+    open-in-view: false
+
+management:
+  health:
+    db:
+      enabled: false
