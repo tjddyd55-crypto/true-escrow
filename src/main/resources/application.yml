@@ -5,9 +5,9 @@ server:
 # Spring
 spring:
   datasource:
-    url: ${SPRING_DATASOURCE_URL:${DATABASE_URL:jdbc:h2:mem:trustescrow;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE}}
-    username: ${SPRING_DATASOURCE_USERNAME:${DATABASE_USERNAME:sa}}
-    password: ${SPRING_DATASOURCE_PASSWORD:${DATABASE_PASSWORD:}}
+    url: ${SPRING_DATASOURCE_URL:}
+    username: ${SPRING_DATASOURCE_USERNAME:}
+    password: ${SPRING_DATASOURCE_PASSWORD:}
   jpa:
     hibernate:
       ddl-auto: ${HIBERNATE_DDL_AUTO:update}
