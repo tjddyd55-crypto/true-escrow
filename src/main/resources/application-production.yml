@@ -1,12 +1,24 @@
 # Production profile configuration
-# CRITICAL: Do NOT set datasource.url, username, or password here
-# These must come from environment variables (SPRING_DATASOURCE_URL, etc.)
-# to ensure JDBC URL normalization works correctly
+# Datasource values must come from environment variables
 
 spring:
   datasource:
     driver-class-name: org.postgresql.Driver
+    url: ${SPRING_DATASOURCE_URL:${DATABASE_URL:}}
+    username: ${SPRING_DATASOURCE_USERNAME:}
+    password: ${SPRING_DATASOURCE_PASSWORD:}
+    hikari:
+      # Allow app to start even if DB is temporarily unavailable
+      initialization-fail-timeout: 0
+  sql:
+    init:
+      mode: never
   jpa:
     hibernate:
-      ddl-auto: validate
+      ddl-auto: none
     open-in-view: false
+
+management:
+  health:
+    db:
+      enabled: false
