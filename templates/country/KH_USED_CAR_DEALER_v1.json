@@ -1,0 +1,17 @@
+{
+  "country": "KH",
+  "category": "USED_CAR_DEALER",
+  "version": "v1",
+  "params": {
+    "inspectionTtlDays": 3,
+    "disputeTtlHours": 48,
+    "autoApproveEnabled": true,
+    "holdbackRatio": 0.15,
+    "immediateRatio": 0.85,
+    "evidenceRequired": true,
+    "offsetCapsByReasonCode": {
+      "DAMAGE_MINOR": 0.1,
+      "MISSING_PARTS": 0.1
+    }
+  }
+}

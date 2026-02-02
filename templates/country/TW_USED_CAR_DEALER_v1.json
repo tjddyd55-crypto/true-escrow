@@ -1,0 +1,17 @@
+{
+  "country": "TW",
+  "category": "USED_CAR_DEALER",
+  "version": "v1",
+  "params": {
+    "inspectionTtlDays": 3,
+    "disputeTtlHours": 48,
+    "autoApproveEnabled": true,
+    "holdbackRatio": 0.10,
+    "immediateRatio": 0.90,
+    "evidenceRequired": true,
+    "offsetCapsByReasonCode": {
+      "DAMAGE_MINOR": 0.05,
+      "MISSING_PARTS": 0.05
+    }
+  }
+}

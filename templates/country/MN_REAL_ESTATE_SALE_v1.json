@@ -1,0 +1,17 @@
+{
+  "country": "MN",
+  "category": "REAL_ESTATE_SALE",
+  "version": "v1",
+  "params": {
+    "inspectionTtlDays": 7,
+    "disputeTtlHours": 72,
+    "autoApproveEnabled": true,
+    "holdbackRatio": 0.25,
+    "immediateRatio": 0.75,
+    "evidenceRequired": true,
+    "offsetCapsByReasonCode": {
+      "DAMAGE_MINOR": 0.1,
+      "MISSING_PARTS": 0.1
+    }
+  }
+}

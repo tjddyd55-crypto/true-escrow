@@ -1,0 +1,10 @@
+# Pilot configuration for MN × USED_CAR_PRIVATE
+# Enable pilot with: --spring.profiles.active=pilot
+
+pilot:
+  enabled: true
+  country-allowlist:
+    - MN
+  category-allowlist:
+    - USED_CAR_PRIVATE
+  template-version: v1

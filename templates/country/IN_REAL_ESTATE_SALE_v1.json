@@ -1,0 +1,17 @@
+{
+  "country": "IN",
+  "category": "REAL_ESTATE_SALE",
+  "version": "v1",
+  "params": {
+    "inspectionTtlDays": 7,
+    "disputeTtlHours": 96,
+    "autoApproveEnabled": true,
+    "holdbackRatio": 0.30,
+    "immediateRatio": 0.70,
+    "evidenceRequired": true,
+    "offsetCapsByReasonCode": {
+      "DAMAGE_MINOR": 0.15,
+      "MISSING_PARTS": 0.15
+    }
+  }
+}

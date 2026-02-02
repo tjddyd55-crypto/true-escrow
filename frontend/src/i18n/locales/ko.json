@@ -1,0 +1,73 @@
+{
+  "states": {
+    "CREATED": "거래 생성됨",
+    "FUNDED": "자금 보관됨",
+    "DELIVERED": "배송 완료",
+    "INSPECTION": "검수 중",
+    "APPROVED": "승인됨",
+    "ISSUE": "문제 제기",
+    "SETTLED": "정산 완료"
+  },
+  "timers": {
+    "AUTO_APPROVE": "자동 승인",
+    "DISPUTE_TTL": "분쟁 TTL",
+    "HOLDBACK_RELEASE": "보류 해제"
+  },
+  "timerExplanations": {
+    "AUTO_APPROVE": "구매자가 응답하지 않으면 거래가 자동으로 승인됩니다",
+    "DISPUTE_TTL": "TTL이 만료되면 기본 해결책이 적용됩니다",
+    "HOLDBACK_RELEASE": "보류 금액이 자동으로 해제됩니다"
+  },
+  "reasonCodes": {
+    "NOT_DELIVERED": "미배송",
+    "DAMAGE_MAJOR": "심각한 손상",
+    "DAMAGE_MINOR": "경미한 손상",
+    "MISSING_PARTS": "부품 누락",
+    "QUALITY_NOT_MATCHING": "품질 불일치",
+    "DOCUMENT_MISMATCH": "서류 불일치",
+    "OTHER": "기타"
+  },
+  "ledgerTypes": {
+    "HOLD": "보관",
+    "RELEASE": "해제",
+    "REFUND": "환불",
+    "OFFSET": "상계"
+  },
+  "actions": {
+    "fundDeal": "거래 자금 입금",
+    "markDelivered": "배송 완료 표시",
+    "approve": "승인",
+    "raiseIssue": "문제 제기",
+    "uploadEvidence": "증빙 업로드",
+    "resolveDispute": "분쟁 해결",
+    "viewTimeline": "타임라인 보기",
+    "viewLedger": "원장 보기"
+  },
+  "categories": {
+    "CAR": "자동차",
+    "REAL_ESTATE_RENTAL": "부동산 임대",
+    "REAL_ESTATE_SALE": "부동산 매매",
+    "HIGH_VALUE_USED": "고가 중고품",
+    "B2B_DELIVERY": "B2B 배송",
+    "USED_CAR_PRIVATE": "중고차 (개인)",
+    "USED_CAR_DEALER": "중고차 (딜러)"
+  },
+  "ui": {
+    "timeline": "타임라인",
+    "evidence": "증빙",
+    "moneySummary": "금전 요약",
+    "ledger": "원장",
+    "immediateAmount": "즉시 금액",
+    "holdbackAmount": "보류 금액",
+    "totalAmount": "전체 금액",
+    "waitingFor": "대기 중: {role}",
+    "noActionsAvailable": "사용 가능한 액션이 없습니다"
+  },
+  "money": {
+    "willBeReleasedAt": "DELIVERED 시점에 판매자에게 해제됩니다",
+    "heldInEscrow": "에스크로에 보관 중",
+    "releasedToSeller": "판매자에게 해제됨",
+    "willBeReleasedAutomatically": "자동으로 해제됩니다",
+    "mayBeOffset": "해결책에 따라 상계되거나 해제될 수 있습니다"
+  }
+}

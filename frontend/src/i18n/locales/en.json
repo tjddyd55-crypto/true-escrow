@@ -1,0 +1,73 @@
+{
+  "states": {
+    "CREATED": "Created",
+    "FUNDED": "Funded",
+    "DELIVERED": "Delivered",
+    "INSPECTION": "Under Inspection",
+    "APPROVED": "Approved",
+    "ISSUE": "Issue Raised",
+    "SETTLED": "Settled"
+  },
+  "timers": {
+    "AUTO_APPROVE": "Auto Approve",
+    "DISPUTE_TTL": "Dispute TTL",
+    "HOLDBACK_RELEASE": "Holdback Release"
+  },
+  "timerExplanations": {
+    "AUTO_APPROVE": "If buyer does not respond, deal will auto-approve",
+    "DISPUTE_TTL": "If TTL expires, default resolution will be applied",
+    "HOLDBACK_RELEASE": "Holdback will be released automatically"
+  },
+  "reasonCodes": {
+    "NOT_DELIVERED": "Not Delivered",
+    "DAMAGE_MAJOR": "Major Damage",
+    "DAMAGE_MINOR": "Minor Damage",
+    "MISSING_PARTS": "Missing Parts",
+    "QUALITY_NOT_MATCHING": "Quality Not Matching",
+    "DOCUMENT_MISMATCH": "Document Mismatch",
+    "OTHER": "Other"
+  },
+  "ledgerTypes": {
+    "HOLD": "Hold",
+    "RELEASE": "Release",
+    "REFUND": "Refund",
+    "OFFSET": "Offset"
+  },
+  "actions": {
+    "fundDeal": "Fund Deal",
+    "markDelivered": "Mark Delivered",
+    "approve": "Approve",
+    "raiseIssue": "Raise Issue",
+    "uploadEvidence": "Upload Evidence",
+    "resolveDispute": "Resolve Dispute",
+    "viewTimeline": "View Timeline",
+    "viewLedger": "View Ledger"
+  },
+  "categories": {
+    "CAR": "Car",
+    "REAL_ESTATE_RENTAL": "Real Estate Rental",
+    "REAL_ESTATE_SALE": "Real Estate Sale",
+    "HIGH_VALUE_USED": "High Value Used",
+    "B2B_DELIVERY": "B2B Delivery",
+    "USED_CAR_PRIVATE": "Used Car (Private)",
+    "USED_CAR_DEALER": "Used Car (Dealer)"
+  },
+  "ui": {
+    "timeline": "Timeline",
+    "evidence": "Evidence",
+    "moneySummary": "Money Summary",
+    "ledger": "Ledger",
+    "immediateAmount": "Immediate Amount",
+    "holdbackAmount": "Holdback Amount",
+    "totalAmount": "Total Amount",
+    "waitingFor": "Waiting for: {role}",
+    "noActionsAvailable": "No actions available"
+  },
+  "money": {
+    "willBeReleasedAt": "Will be released to seller at DELIVERED",
+    "heldInEscrow": "Held in escrow",
+    "releasedToSeller": "Released to seller",
+    "willBeReleasedAutomatically": "Will be released automatically",
+    "mayBeOffset": "May be offset or released based on resolution"
+  }
+}

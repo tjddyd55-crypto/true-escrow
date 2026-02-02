@@ -1,0 +1,6 @@
+# Default configuration (pilot disabled)
+pilot:
+  enabled: false
+  country-allowlist: []
+  category-allowlist: []
+  template-version: v1
