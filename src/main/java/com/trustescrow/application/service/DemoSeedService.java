@@ -21,7 +21,7 @@ import java.util.UUID;
  * Run with: --spring.profiles.active=demo
  */
 @Component
-@Profile("demo")
+@Profile({"dev", "demo"})
 @RequiredArgsConstructor
 @Slf4j
 public class DemoSeedService implements CommandLineRunner {
