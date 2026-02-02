@@ -149,6 +149,15 @@ public class InvoiceService {
         invoice.markAsPaid(paidAt, lemonOrderId);
         invoiceRepository.save(invoice);
     }
+
+    /**
+     * Mark invoice as paid (legacy signature without Lemon order ID).
+     * Kept for compatibility with existing controllers and manual flows.
+     */
+    @Transactional
+    public void markInvoiceAsPaid(UUID invoiceId, Instant paidAt) {
+        markInvoiceAsPaid(invoiceId, paidAt, null);
+    }
     
     private String generateInvoiceNumber(Partner partner, LocalDate invoiceDate, long sequence) {
         String yearMonth = invoiceDate.format(java.time.format.DateTimeFormatter.ofPattern("yyyyMM"));
