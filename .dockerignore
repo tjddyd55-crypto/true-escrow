@@ -1,0 +1,17 @@
+.git
+.gitignore
+README.md
+docs/
+dev_task/
+develop/
+frontend/
+node_modules/
+*.md
+.env
+.env.local
+bin/
+.gradle/
+build/
+*.iml
+.idea/
+.vscode/
