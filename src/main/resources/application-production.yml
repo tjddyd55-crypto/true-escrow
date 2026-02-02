@@ -1,0 +1,12 @@
+# Production profile configuration
+# CRITICAL: Do NOT set datasource.url, username, or password here
+# These must come from environment variables (SPRING_DATASOURCE_URL, etc.)
+# to ensure JDBC URL normalization works correctly
+
+spring:
+  datasource:
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
