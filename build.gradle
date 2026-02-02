@@ -11,6 +11,27 @@ java {
     sourceCompatibility = '17'
 }
 
+sourceSets {
+    main {
+        java {
+            srcDirs = ['src/main/java']
+        }
+        resources {
+            srcDirs = ['src/main/resources']
+        }
+    }
+    dev {
+        java {
+            srcDirs = ['src/dev/java']
+        }
+        resources {
+            srcDirs = ['src/dev/resources']
+        }
+        compileClasspath += sourceSets.main.output + configurations.compileClasspath
+        runtimeClasspath += output + compileClasspath
+    }
+}
+
 configurations {
     compileOnly {
         extendsFrom annotationProcessor
