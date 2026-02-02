@@ -3,21 +3,37 @@ set -e
 
 echo "Starting true-escrow service..."
 
-if [ -n "$DATABASE_URL" ] && [ -z "$SPRING_DATASOURCE_URL" ]; then
-  case "$DATABASE_URL" in
+normalize_jdbc_url() {
+  case "$1" in
+    jdbc:*)
+      echo "$1"
+      ;;
     postgres://*)
-      export SPRING_DATASOURCE_URL="jdbc:postgresql://${DATABASE_URL#postgres://}"
+      echo "jdbc:postgresql://${1#postgres://}"
       ;;
     postgresql://*)
-      export SPRING_DATASOURCE_URL="jdbc:postgresql://${DATABASE_URL#postgresql://}"
+      echo "jdbc:postgresql://${1#postgresql://}"
       ;;
-    jdbc:*)
-      export SPRING_DATASOURCE_URL="$DATABASE_URL"
+    *)
+      echo "$1"
       ;;
   esac
+}
+
+if [ -n "$SPRING_DATASOURCE_URL" ]; then
+  SPRING_DATASOURCE_URL="$(normalize_jdbc_url "$SPRING_DATASOURCE_URL")"
+  export SPRING_DATASOURCE_URL
+elif [ -n "$DATABASE_URL" ]; then
+  SPRING_DATASOURCE_URL="$(normalize_jdbc_url "$DATABASE_URL")"
+  export SPRING_DATASOURCE_URL
 fi
 
 echo "SPRING_DATASOURCE_URL=${SPRING_DATASOURCE_URL:-<not set>}"
 echo "SERVER_PORT=${PORT:-8080}"
+
+if [ -n "$SPRING_DATASOURCE_URL" ] && [ "${SPRING_DATASOURCE_URL#jdbc:}" = "$SPRING_DATASOURCE_URL" ]; then
+  echo "Error: SPRING_DATASOURCE_URL must start with jdbc: (current value is not JDBC)"
+  exit 1
+fi
 
 java $JAVA_OPTS -jar /app/app.jar
