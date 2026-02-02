@@ -1,11 +1,11 @@
 #!/bin/sh
 set -e
 
-echo "Starting true-escrow service..."
-echo "[ENTRYPOINT] RAW DATABASE_URL=${DATABASE_URL:-<not set>}"
-echo "[ENTRYPOINT] RAW SPRING_DATASOURCE_URL=${SPRING_DATASOURCE_URL:-<not set>}"
+echo "===== ENTRYPOINT START ====="
+echo "DATABASE_URL=$DATABASE_URL"
+echo "SPRING_DATASOURCE_URL=$SPRING_DATASOURCE_URL"
 
-normalize_jdbc_url() {
+normalize() {
   case "$1" in
     jdbc:*)
       echo "$1"
@@ -23,24 +23,12 @@ normalize_jdbc_url() {
 }
 
 if [ -n "$SPRING_DATASOURCE_URL" ]; then
-  SPRING_DATASOURCE_URL="$(normalize_jdbc_url "$SPRING_DATASOURCE_URL")"
-  export SPRING_DATASOURCE_URL
+  export SPRING_DATASOURCE_URL="$(normalize "$SPRING_DATASOURCE_URL")"
 elif [ -n "$DATABASE_URL" ]; then
-  SPRING_DATASOURCE_URL="$(normalize_jdbc_url "$DATABASE_URL")"
-  export SPRING_DATASOURCE_URL
+  export SPRING_DATASOURCE_URL="$(normalize "$DATABASE_URL")"
 fi
 
-echo "[ENTRYPOINT] FINAL SPRING_DATASOURCE_URL=${SPRING_DATASOURCE_URL:-<not set>}"
-echo "[ENTRYPOINT] SERVER_PORT=${PORT:-8080}"
+echo "FINAL JDBC URL=$SPRING_DATASOURCE_URL"
+echo "===== ENTRYPOINT END ====="
 
-if [ -z "$SPRING_DATASOURCE_URL" ]; then
-  echo "[ENTRYPOINT] FATAL: SPRING_DATASOURCE_URL is empty"
-  exit 1
-fi
-
-if [ -n "$SPRING_DATASOURCE_URL" ] && [ "${SPRING_DATASOURCE_URL#jdbc:}" = "$SPRING_DATASOURCE_URL" ]; then
-  echo "Error: SPRING_DATASOURCE_URL must start with jdbc: (current value is not JDBC)"
-  exit 1
-fi
-
-java $JAVA_OPTS -jar /app/app.jar
+exec "$@"

@@ -35,3 +35,4 @@ ENV JAVA_OPTS="-Xmx512m -Xms256m"
 
 # Run application
 ENTRYPOINT ["/app/docker-entrypoint.sh"]
+CMD ["java", "-jar", "/app/app.jar"]
