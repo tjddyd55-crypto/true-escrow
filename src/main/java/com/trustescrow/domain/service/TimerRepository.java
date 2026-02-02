@@ -14,5 +14,5 @@ public interface TimerRepository extends JpaRepository<Timer, UUID> {
     @Query("SELECT t FROM Timer t WHERE t.timerType = :type AND t.active = true")
     List<Timer> findActiveByType(@Param("type") String type);
     
-    Optional<Timer> findByDealIdAndTypeAndActive(UUID dealId, String type, boolean active);
+    Optional<Timer> findByDealIdAndTimerTypeAndActive(UUID dealId, String timerType, boolean active);
 }

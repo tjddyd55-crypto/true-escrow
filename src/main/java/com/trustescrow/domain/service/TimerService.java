@@ -65,7 +65,7 @@ public class TimerService {
      */
     @Transactional(readOnly = true)
     public Timer findActiveTimer(UUID dealId, String timerType) {
-        return timerRepository.findByDealIdAndTypeAndActive(dealId, timerType, true)
+        return timerRepository.findByDealIdAndTimerTypeAndActive(dealId, timerType, true)
             .orElse(null);
     }
 }
