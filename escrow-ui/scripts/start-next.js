@@ -1,7 +1,7 @@
 const { spawn } = require("node:child_process");
 
 const port = process.env.PORT || "8080";
-const host = process.env.HOSTNAME || "0.0.0.0";
+const host = "0.0.0.0";
 
 console.log(`Starting Next.js on http://${host}:${port}`);
 
