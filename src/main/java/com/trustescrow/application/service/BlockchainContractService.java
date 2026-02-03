@@ -135,16 +135,7 @@ public class BlockchainContractService {
             org.web3j.tx.gas.DefaultGasProvider gasProvider = 
                 new org.web3j.tx.gas.DefaultGasProvider();
             
-            Transaction transaction = Transaction.createFunctionCallTransaction(
-                credentials.getAddress(),
-                nonce,
-                gasProvider.getGasPrice(),
-                gasProvider.getGasLimit(),
-                contractAddress,
-                encodedFunction
-            );
-            
-            // Sign and send transaction
+            // Create and sign raw transaction
             org.web3j.crypto.RawTransaction rawTransaction = org.web3j.crypto.RawTransaction.createTransaction(
                 nonce,
                 gasProvider.getGasPrice(),
