@@ -77,7 +77,8 @@ public class DealMilestone {
     public void updateStatus(MilestoneStatus newStatus) {
         this.status = newStatus;
         this.updatedAt = Instant.now();
-        if (newStatus == MilestoneStatus.COMPLETED) {
+        // STEP 2: Set completedAt for RELEASED or COMPLETED status
+        if (newStatus == MilestoneStatus.COMPLETED || newStatus == MilestoneStatus.RELEASED) {
             this.completedAt = Instant.now();
         }
     }
