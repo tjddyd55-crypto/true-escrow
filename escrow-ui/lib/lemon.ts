@@ -1,28 +1,50 @@
 export async function createLemonCheckout() {
-  // 1) 실제 호출 URL (전체 문자열)
+  console.log("===== LEMON CHECKOUT API CALL START =====");
+  
+  // 1) 실제 호출 URL 전체 (문자열 그대로)
   const apiUrl = "https://api.lemonsqueezy.com/v1/checkouts";
-  console.log("===== LEMON CHECKOUT API CALL =====");
-  console.log("1) API URL:", apiUrl);
+  console.log("1) API URL (전체 문자열):", apiUrl);
+  console.log("   - URL 확인:", apiUrl === "https://api.lemonsqueezy.com/v1/checkouts" ? "✅ 정확함" : "❌ 불일치");
   
-  // 2) Authorization 헤더 존재 여부와 prefix 확인
+  // 2) process.env.LEMON_API_KEY 존재 여부
   const apiKey = process.env.LEMON_API_KEY;
-  const hasAuth = apiKey != null && apiKey.length > 0;
-  const authPrefix = apiKey ? (apiKey.startsWith("sk_test_") ? "sk_test_" : 
-                                apiKey.startsWith("sk_live_") ? "sk_live_" : 
-                                "unknown") : "none";
-  console.log("2) Authorization Header:");
-  console.log("   - Exists:", hasAuth);
-  console.log("   - Prefix:", authPrefix);
-  console.log("   - Key length:", apiKey ? apiKey.length : 0);
-  console.log("   - Key preview:", apiKey ? `${apiKey.substring(0, 10)}...` : "N/A");
+  const apiKeyExists = apiKey != null && apiKey !== undefined && apiKey.length > 0;
+  console.log("2) process.env.LEMON_API_KEY 존재 여부:", apiKeyExists ? "✅ 존재" : "❌ 없음");
+  console.log("   - 값:", apiKeyExists ? `"${apiKey.substring(0, 20)}..." (길이: ${apiKey.length})` : "undefined 또는 빈 문자열");
   
-  // 3) store_id, variant_id 실제 값
+  // 3) process.env.LEMON_API_KEY prefix (sk_test_ 인지)
+  let apiKeyPrefix = "none";
+  if (apiKeyExists) {
+    if (apiKey.startsWith("sk_test_")) {
+      apiKeyPrefix = "sk_test_";
+    } else if (apiKey.startsWith("sk_live_")) {
+      apiKeyPrefix = "sk_live_";
+    } else {
+      apiKeyPrefix = `unknown (시작: "${apiKey.substring(0, Math.min(10, apiKey.length))}")`;
+    }
+  }
+  console.log("3) process.env.LEMON_API_KEY prefix:", apiKeyPrefix);
+  console.log("   - sk_test_ 확인:", apiKeyPrefix === "sk_test_" ? "✅ 맞음" : "❌ 아님");
+  
+  // 4) headers 전체 (Authorization 값은 prefix만)
+  const headers = {
+    Authorization: `Bearer ${apiKey}`,
+    Accept: "application/json",
+    "Content-Type": "application/json",
+  };
+  const headersForLog = {
+    Authorization: apiKeyExists ? `Bearer ${apiKeyPrefix}...` : "Bearer (missing)",
+    Accept: headers.Accept,
+    "Content-Type": headers["Content-Type"],
+  };
+  console.log("4) Headers 전체:");
+  console.log("   ", JSON.stringify(headersForLog, null, 2));
+  console.log("   - Authorization 헤더 존재:", headers.Authorization ? "✅ 있음" : "❌ 없음");
+  console.log("   - Authorization prefix:", apiKeyPrefix);
+  
+  // Request body 준비
   const storeId = process.env.LEMON_STORE_ID;
   const variantId = process.env.LEMON_VARIANT_ID;
-  console.log("3) Request Parameters:");
-  console.log("   - store_id:", storeId || "(missing)");
-  console.log("   - variant_id:", variantId || "(missing)");
-  
   const requestBody = {
     data: {
       type: "checkouts",
@@ -36,52 +58,61 @@ export async function createLemonCheckout() {
       },
     },
   };
-  
-  console.log("4) Request Body:", JSON.stringify(requestBody, null, 2));
+  console.log("   - Request Body:", JSON.stringify(requestBody, null, 2));
+  console.log("   - store_id:", storeId || "(missing)");
+  console.log("   - variant_id:", variantId || "(missing)");
   
   try {
+    console.log("5) Fetch 호출 시작...");
     const res = await fetch(apiUrl, {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        Accept: "application/json",
-        "Content-Type": "application/json",
-      },
+      headers: headers,
       body: JSON.stringify(requestBody),
     });
 
-    // 4) Lemon API response status + response body (에러 포함)
-    console.log("5) Response Status:", res.status, res.statusText);
+    // 5) Lemon API response status + response body
+    console.log("6) Response Status:", res.status, res.statusText);
+    console.log("   - Status 확인:", res.status === 200 ? "✅ 성공" : `❌ 에러 (${res.status})`);
     
     const responseText = await res.text();
-    console.log("6) Response Body:", responseText);
+    console.log("7) Response Body (전체):", responseText);
     
-    if (!res.ok) {
-      let errorMessage = "Lemon API error";
+    // Response body 파싱 시도
+    try {
+      const responseJson = JSON.parse(responseText);
+      console.log("8) Response Body (파싱됨):", JSON.stringify(responseJson, null, 2));
       
-      try {
-        const errorJson = JSON.parse(responseText);
-        if (errorJson.errors && errorJson.errors.length > 0) {
-          errorMessage = errorJson.errors[0].detail || errorJson.errors[0].title || errorMessage;
-          console.log("7) Parsed Error:", errorJson);
+      if (!res.ok) {
+        if (responseJson.errors && responseJson.errors.length > 0) {
+          console.log("9) 에러 상세:");
+          responseJson.errors.forEach((err: any, idx: number) => {
+            console.log(`   - Error ${idx + 1}:`, err);
+          });
         }
-      } catch {
-        errorMessage = responseText || `HTTP ${res.status}`;
+        console.error("===== LEMON CHECKOUT API ERROR =====");
+        const errorMessage = responseJson.errors?.[0]?.detail || 
+                           responseJson.errors?.[0]?.title || 
+                           `HTTP ${res.status}`;
+        throw new Error(`Lemon API error (${res.status}): ${errorMessage}`);
       }
-
-      console.error("===== LEMON CHECKOUT API ERROR =====");
-      throw new Error(`Lemon API error (${res.status}): ${errorMessage}`);
+      
+      const checkoutUrl = responseJson.data?.attributes?.url;
+      console.log("9) Checkout URL:", checkoutUrl || "(not found in response)");
+      console.log("===== LEMON CHECKOUT API SUCCESS =====");
+      
+      return checkoutUrl;
+    } catch (parseError) {
+      console.error("8) Response Body 파싱 실패:", parseError);
+      console.error("   - Raw Response:", responseText);
+      throw new Error(`Failed to parse response (${res.status}): ${responseText}`);
     }
-
-    const json = JSON.parse(responseText);
-    console.log("7) Parsed Response:", json);
-    console.log("8) Checkout URL:", json.data?.attributes?.url || "(not found)");
-    console.log("===== LEMON CHECKOUT API SUCCESS =====");
-    
-    return json.data.attributes.url;
   } catch (error) {
     console.error("===== LEMON CHECKOUT API EXCEPTION =====");
     console.error("Error:", error);
+    if (error instanceof Error) {
+      console.error("Error message:", error.message);
+      console.error("Error stack:", error.stack);
+    }
     throw error;
   }
 }
