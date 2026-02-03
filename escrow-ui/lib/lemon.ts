@@ -11,7 +11,7 @@ export async function createLemonCheckout(dealId?: string, milestoneId?: string)
   console.log(`[${requestId}]    - URL 확인:`, apiUrl === "https://api.lemonsqueezy.com/v1/checkouts" ? "✅ 정확함" : "❌ 불일치");
   console.log(`[${requestId}]    - 도메인 확인:`, apiUrl.startsWith("https://api.lemonsqueezy.com") ? "✅ api.lemonsqueezy.com" : "❌ 다른 도메인");
   
-  // C3) API Key trim 처리
+  // C3) API Key trim 처리 및 prefix 검증
   const rawApiKey = process.env.LEMON_API_KEY || "";
   const apiKey = rawApiKey.trim();
   const apiKeyExists = apiKey.length > 0;
@@ -21,23 +21,41 @@ export async function createLemonCheckout(dealId?: string, milestoneId?: string)
   console.log(`[${requestId}]    - Trim 후 길이:`, apiKey.length);
   console.log(`[${requestId}]    - Trim 필요 여부:`, rawApiKey.length !== apiKey.length ? "⚠️ 공백 제거됨" : "✅ 공백 없음");
   
-  // C1) API Key 모드 불일치 체크
+  // C1) API Key 모드 불일치 체크 및 prefix 추출
   let apiKeyPrefix = "none";
   let keyMode = "unknown";
+  let keyFormatValid = false;
+  
   if (apiKeyExists) {
     if (apiKey.startsWith("sk_test_")) {
       apiKeyPrefix = "sk_test_";
       keyMode = "test";
+      keyFormatValid = true;
     } else if (apiKey.startsWith("sk_live_")) {
       apiKeyPrefix = "sk_live_";
       keyMode = "live";
+      keyFormatValid = true;
     } else {
-      apiKeyPrefix = `unknown (시작: "${apiKey.substring(0, Math.min(10, apiKey.length))}")`;
+      // Unknown format - show first 10 chars for debugging (safe)
+      const preview = apiKey.substring(0, Math.min(10, apiKey.length));
+      apiKeyPrefix = `unknown (시작: "${preview}")`;
+      console.warn(`[${requestId}]    ⚠️ API Key가 예상된 형식이 아닙니다. sk_test_ 또는 sk_live_로 시작해야 합니다.`);
     }
   }
+  
   console.log(`[${requestId}] 3) process.env.LEMON_API_KEY prefix:`, apiKeyPrefix);
   console.log(`[${requestId}]    - Key mode:`, keyMode);
+  console.log(`[${requestId}]    - Key format valid:`, keyFormatValid ? "✅ 맞음" : "❌ 아님");
   console.log(`[${requestId}]    - sk_test_ 확인:`, apiKeyPrefix === "sk_test_" ? "✅ 맞음" : "❌ 아님");
+  
+  // 추가 검증: 키가 이미 prefix를 포함하고 있는지 확인 (중복 방지)
+  if (apiKeyExists && keyFormatValid) {
+    // 키가 정상적으로 prefix를 포함하고 있음
+    console.log(`[${requestId}]    - Key prefix 포함 여부: ✅ 정상 (${apiKeyPrefix}로 시작)`);
+  } else if (apiKeyExists && !keyFormatValid) {
+    console.error(`[${requestId}]    - ⚠️ API Key 형식 오류: sk_test_ 또는 sk_live_로 시작해야 합니다.`);
+    console.error(`[${requestId}]    - 현재 키 시작 부분: "${apiKey.substring(0, Math.min(15, apiKey.length))}"`);
+  }
   
   // C3) Headers 규격 체크 (JSON:API) - trim 처리된 key 사용
   const headers = {
