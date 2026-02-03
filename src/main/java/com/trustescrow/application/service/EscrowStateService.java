@@ -29,9 +29,10 @@ public class EscrowStateService {
     
     /**
      * Milestone state structure.
+     * STEP 4: Added RELEASE_REQUESTED status.
      */
     public static class MilestoneState {
-        private String status; // "PENDING" | "FUNDED" | "RELEASED"
+        private String status; // "PENDING" | "PAID_HELD" | "FUNDED" | "RELEASE_REQUESTED" | "RELEASED" | "REFUNDED"
         
         public MilestoneState(String status) {
             this.status = status;
@@ -141,26 +142,54 @@ public class EscrowStateService {
     }
     
     /**
-     * STEP 2: Set milestone status to RELEASED (admin action).
-     * Only transitions from PAID_HELD to RELEASED.
+     * STEP 4: Set milestone status to RELEASE_REQUESTED.
+     * Only transitions from PAID_HELD/FUNDS_HELD to RELEASE_REQUESTED.
      */
-    public void setMilestoneReleased(String dealId, String milestoneId) {
-        log.info("===== STEP 2: MILESTONE RELEASE TRANSITION =====");
-        log.info("dealId: {}, milestoneId: {}", dealId, milestoneId);
+    public void setMilestoneReleaseRequested(String dealId, String milestoneId) {
+        log.info("[ESCROW] Release request: dealId={}, milestoneId={}", dealId, milestoneId);
         
         STATE_STORAGE.computeIfAbsent(dealId, k -> new ConcurrentHashMap<>())
             .compute(milestoneId, (key, existing) -> {
                 if (existing == null) {
-                    log.warn("Milestone {} for deal {} not found, cannot release", milestoneId, dealId);
+                    log.warn("[ESCROW] Milestone {} for deal {} not found, creating RELEASE_REQUESTED", milestoneId, dealId);
+                    return new MilestoneState("RELEASE_REQUESTED");
+                } else {
+                    String currentStatus = existing.getStatus();
+                    if ("PAID_HELD".equals(currentStatus) || "FUNDS_HELD".equals(currentStatus)) {
+                        log.info("[ESCROW] Milestone {} for deal {} transitioned from {} to RELEASE_REQUESTED", 
+                            milestoneId, dealId, currentStatus);
+                        existing.setStatus("RELEASE_REQUESTED");
+                        return existing;
+                    } else {
+                        log.warn("[ESCROW] Milestone {} for deal {} is in state {}, cannot request release", 
+                            milestoneId, dealId, currentStatus);
+                        return existing;
+                    }
+                }
+            });
+    }
+    
+    /**
+     * STEP 4: Set milestone status to RELEASED (admin approval).
+     * Only transitions from RELEASE_REQUESTED to RELEASED.
+     */
+    public void setMilestoneReleased(String dealId, String milestoneId) {
+        log.info("[ESCROW] Release approval: dealId={}, milestoneId={}", dealId, milestoneId);
+        
+        STATE_STORAGE.computeIfAbsent(dealId, k -> new ConcurrentHashMap<>())
+            .compute(milestoneId, (key, existing) -> {
+                if (existing == null) {
+                    log.warn("[ESCROW] Milestone {} for deal {} not found, cannot release", milestoneId, dealId);
                     return null;
                 } else {
                     String currentStatus = existing.getStatus();
-                    if ("PAID_HELD".equals(currentStatus)) {
-                        log.info("Milestone {} for deal {} transitioned from PAID_HELD to RELEASED", milestoneId, dealId);
+                    if ("RELEASE_REQUESTED".equals(currentStatus)) {
+                        log.info("[ESCROW] Milestone {} for deal {} transitioned from RELEASE_REQUESTED to RELEASED", 
+                            milestoneId, dealId);
                         existing.setStatus("RELEASED");
                         return existing;
                     } else {
-                        log.warn("Milestone {} for deal {} is in state {}, cannot release", 
+                        log.warn("[ESCROW] Milestone {} for deal {} is in state {}, cannot release (must be RELEASE_REQUESTED)", 
                             milestoneId, dealId, currentStatus);
                         return existing;
                     }

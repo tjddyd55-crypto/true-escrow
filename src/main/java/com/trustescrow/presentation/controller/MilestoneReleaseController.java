@@ -17,13 +17,15 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * STEP 4: Admin Release API
+ * STEP 4: Admin Release Approval API
  * 
- * Allows admin to release funds from escrow for a specific milestone.
- * Only milestones in PAID_HELD status can be released.
+ * Allows admin to approve release of funds from escrow for a specific milestone.
+ * Only milestones in RELEASE_REQUESTED status can be approved for release.
+ * 
+ * ⚠️ ADMIN ONLY - This endpoint requires admin privileges.
  */
 @RestController
-@RequestMapping("/api/deals")
+@RequestMapping("/api/admin/deals")
 @RequiredArgsConstructor
 @Slf4j
 public class MilestoneReleaseController {
@@ -31,28 +33,40 @@ public class MilestoneReleaseController {
     private final DealRepository dealRepository;
     private final DealMilestoneRepository milestoneRepository;
     private final EscrowStateService escrowStateService;
+    private final com.trustescrow.domain.service.AuditEventRepository auditEventRepository;
     
     /**
-     * STEP 4: Release milestone funds from escrow.
+     * STEP 4: Approve release of milestone funds from escrow (ADMIN ONLY).
      * 
-     * POST /api/deals/{dealId}/milestones/{milestoneId}/release
+     * POST /api/admin/deals/{dealId}/milestones/{milestoneId}/release
      * 
      * Behavior:
      * - Validate deal & milestone state
-     * - Only allow release if status = PAID_HELD
+     * - Only allow approval if status = RELEASE_REQUESTED
      * - Update milestone → RELEASED
+     * - Record audit log
      * - Update deal status accordingly
      * - (Actual payout handled later – for now logical release only)
+     * 
+     * ⚠️ TODO: Add admin authorization check (e.g., @PreAuthorize("hasRole('ADMIN')"))
      */
     @PostMapping("/{dealId}/milestones/{milestoneId}/release")
     @Transactional
-    public ResponseEntity<?> releaseMilestone(
+    public ResponseEntity<?> approveRelease(
             @PathVariable UUID dealId,
             @PathVariable UUID milestoneId,
-            @RequestHeader(value = "X-User-Id", required = false) UUID userId) {
+            @RequestHeader(value = "X-User-Id", required = false) UUID userId,
+            @RequestHeader(value = "X-User-Role", required = false) String userRole) {
         
-        log.info("===== STEP 4: MILESTONE RELEASE API START =====");
-        log.info("DealId: {}, MilestoneId: {}, Actor: {}", dealId, milestoneId, userId != null ? userId : "system");
+        log.info("[RELEASE_APPROVAL] Admin release approval: dealId={}, milestoneId={}, actor={}, role={}", 
+            dealId, milestoneId, userId != null ? userId : "system", userRole != null ? userRole : "unknown");
+        
+        // STEP 4: Basic admin check (TODO: Replace with proper Spring Security)
+        if (userRole == null || !"ADMIN".equalsIgnoreCase(userRole)) {
+            log.warn("[RELEASE_APPROVAL] Unauthorized: user role is not ADMIN (role={})", userRole);
+            return ResponseEntity.status(403)
+                .body(new ErrorResponse("Only ADMIN users can approve release requests"));
+        }
         
         try {
             // Validate deal exists
@@ -77,23 +91,42 @@ public class MilestoneReleaseController {
             DealMilestone milestone = milestoneOpt.get();
             log.info("Milestone found: status={}", milestone.getStatus());
             
-            // STEP 4: Validate milestone status = PAID_HELD
-            if (milestone.getStatus() != DealMilestone.MilestoneStatus.PAID_HELD) {
-                log.warn("Milestone {} is in status {}, cannot release. Only PAID_HELD can be released.", 
+            // STEP 4: Validate milestone status = RELEASE_REQUESTED
+            if (milestone.getStatus() != DealMilestone.MilestoneStatus.RELEASE_REQUESTED) {
+                log.warn("[RELEASE_APPROVAL] Milestone {} is in status {}, cannot approve. Only RELEASE_REQUESTED can be approved.", 
                     milestoneId, milestone.getStatus());
                 return ResponseEntity.badRequest()
                     .body(new ErrorResponse(
-                        String.format("Milestone must be in PAID_HELD status to release. Current status: %s", 
+                        String.format("Milestone must be in RELEASE_REQUESTED status to approve. Current status: %s", 
                             milestone.getStatus())));
             }
             
             // STEP 4: Update milestone → RELEASED
-            log.info("Updating milestone {} from PAID_HELD to RELEASED", milestoneId);
+            log.info("[RELEASE_APPROVAL] Approving release: milestone {} from RELEASE_REQUESTED to RELEASED", milestoneId);
             milestone.updateStatus(DealMilestone.MilestoneStatus.RELEASED);
             milestoneRepository.save(milestone);
             
             // Update in-memory state
             escrowStateService.setMilestoneReleased(dealId.toString(), milestoneId.toString());
+            
+            // STEP 4: Record audit log
+            String actor = userId != null ? userId.toString() : "admin";
+            String payload = String.format(
+                "{\"milestoneId\":\"%s\",\"action\":\"RELEASE_APPROVED\",\"fromStatus\":\"RELEASE_REQUESTED\",\"toStatus\":\"RELEASED\"}",
+                milestoneId
+            );
+            
+            com.trustescrow.domain.model.AuditEvent auditEvent = com.trustescrow.domain.model.AuditEvent.builder()
+                .dealId(dealId)
+                .type(com.trustescrow.domain.model.AuditEventType.RELEASE_APPROVED)
+                .actor(actor)
+                .payload(payload)
+                .createdAt(java.time.Instant.now())
+                .build();
+            
+            auditEventRepository.save(auditEvent);
+            log.info("[RELEASE_APPROVAL] Audit log recorded: dealId={}, milestoneId={}, actor={}", 
+                dealId, milestoneId, actor);
             
             // STEP 4: Update deal status accordingly
             // If all milestones are released, mark deal as COMPLETED
