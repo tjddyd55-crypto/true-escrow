@@ -13,7 +13,11 @@ import java.util.Set;
 public class StateMachine {
     
     private static final Map<DealState, Set<DealState>> ALLOWED_TRANSITIONS = Map.of(
-        DealState.CREATED, Set.of(DealState.FUNDED),
+        // STEP 2: Escrow-specific states
+        DealState.CREATED, Set.of(DealState.FUNDS_HELD, DealState.FUNDED), // FUNDED for backward compatibility
+        DealState.FUNDS_HELD, Set.of(DealState.IN_PROGRESS, DealState.COMPLETED, DealState.CANCELLED),
+        DealState.IN_PROGRESS, Set.of(DealState.COMPLETED, DealState.CANCELLED),
+        // Legacy states (for backward compatibility)
         DealState.FUNDED, Set.of(DealState.DELIVERED),
         DealState.DELIVERED, Set.of(DealState.INSPECTION),
         DealState.INSPECTION, Set.of(DealState.APPROVED, DealState.ISSUE),
@@ -29,8 +33,11 @@ public class StateMachine {
      * @return true if transition is allowed
      */
     public static boolean isTransitionAllowed(DealState currentState, DealState newState) {
-        if (currentState == DealState.SETTLED) {
-            return false; // Terminal state
+        // STEP 2: Terminal states
+        if (currentState == DealState.SETTLED || 
+            currentState == DealState.COMPLETED || 
+            currentState == DealState.CANCELLED) {
+            return false; // Terminal states
         }
         
         Set<DealState> allowed = ALLOWED_TRANSITIONS.get(currentState);

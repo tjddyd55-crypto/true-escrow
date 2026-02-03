@@ -52,11 +52,26 @@ public class DealMilestone {
     
     private Instant completedAt;
     
+    /**
+     * STEP 2: Milestone status for escrow flow.
+     * - PENDING: Initial state, payment not yet made
+     * - PAID_HELD: Payment received, funds held in escrow
+     * - RELEASED: Funds released to seller (admin action)
+     * - REFUNDED: Payment refunded to buyer
+     * 
+     * Legacy statuses (for backward compatibility):
+     * - IN_PROGRESS: Work in progress
+     * - COMPLETED: Work completed (legacy)
+     * - REJECTED: Work rejected (legacy)
+     */
     public enum MilestoneStatus {
         PENDING,
-        IN_PROGRESS,
-        COMPLETED,
-        REJECTED
+        PAID_HELD,      // STEP 2: Payment received, funds held
+        RELEASED,       // STEP 2: Funds released
+        REFUNDED,       // STEP 2: Payment refunded
+        IN_PROGRESS,    // Legacy
+        COMPLETED,      // Legacy
+        REJECTED        // Legacy
     }
     
     public void updateStatus(MilestoneStatus newStatus) {

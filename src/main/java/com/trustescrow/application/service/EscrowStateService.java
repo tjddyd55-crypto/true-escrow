@@ -73,44 +73,107 @@ public class EscrowStateService {
     }
     
     /**
-     * STEP 2: Set milestone status to FUNDED (escrow hold).
-     * Only transitions from PENDING to FUNDED.
-     * RELEASED is forbidden in this step.
+     * STEP 2: Set milestone status to PAID_HELD (escrow hold).
+     * Only transitions from PENDING to PAID_HELD.
      */
-    public void setMilestoneFunded(String dealId, String milestoneId) {
+    public void setMilestonePaidHeld(String dealId, String milestoneId) {
         log.info("===== STEP 2: MILESTONE STATE TRANSITION =====");
         log.info("dealId: {}, milestoneId: {}", dealId, milestoneId);
-        log.info("Target state: FUNDED (from PENDING)");
+        log.info("Target state: PAID_HELD (from PENDING)");
         
         STATE_STORAGE.computeIfAbsent(dealId, k -> {
             log.info("Creating new state entry for deal: {}", dealId);
             return new ConcurrentHashMap<>();
         }).compute(milestoneId, (key, existing) -> {
             if (existing == null) {
-                log.info("Milestone {} for deal {} set to FUNDED (from PENDING - new entry)", milestoneId, dealId);
+                log.info("Milestone {} for deal {} set to PAID_HELD (from PENDING - new entry)", milestoneId, dealId);
                 log.info("===== STEP 2: STATE TRANSITION SUCCESS =====");
-                return new MilestoneState("FUNDED");
+                return new MilestoneState("PAID_HELD");
             } else {
                 String currentStatus = existing.getStatus();
                 log.info("Current milestone status: {}", currentStatus);
                 
                 if ("PENDING".equals(currentStatus)) {
-                    log.info("Milestone {} for deal {} transitioned from PENDING to FUNDED", milestoneId, dealId);
-                    existing.setStatus("FUNDED");
+                    log.info("Milestone {} for deal {} transitioned from PENDING to PAID_HELD", milestoneId, dealId);
+                    existing.setStatus("PAID_HELD");
                     log.info("===== STEP 2: STATE TRANSITION SUCCESS =====");
                     return existing;
-                } else if ("FUNDED".equals(currentStatus)) {
-                    log.info("Milestone {} for deal {} already in FUNDED state, skipping", milestoneId, dealId);
-                    log.info("===== STEP 2: STATE ALREADY FUNDED (SKIP) =====");
+                } else if ("PAID_HELD".equals(currentStatus)) {
+                    log.info("Milestone {} for deal {} already in PAID_HELD state, skipping", milestoneId, dealId);
+                    log.info("===== STEP 2: STATE ALREADY PAID_HELD (SKIP) =====");
                     return existing;
                 } else {
-                    log.warn("Milestone {} for deal {} is in state {}, cannot transition to FUNDED", 
+                    log.warn("Milestone {} for deal {} is in state {}, cannot transition to PAID_HELD", 
                         milestoneId, dealId, currentStatus);
                     log.warn("===== STEP 2: STATE TRANSITION BLOCKED =====");
                     return existing;
                 }
             }
         });
+    }
+    
+    /**
+     * STEP 2: Set milestone status to REFUNDED.
+     * Only transitions from PAID_HELD to REFUNDED.
+     */
+    public void setMilestoneRefunded(String dealId, String milestoneId) {
+        log.info("===== STEP 2: MILESTONE REFUND TRANSITION =====");
+        log.info("dealId: {}, milestoneId: {}", dealId, milestoneId);
+        
+        STATE_STORAGE.computeIfAbsent(dealId, k -> new ConcurrentHashMap<>())
+            .compute(milestoneId, (key, existing) -> {
+                if (existing == null) {
+                    log.warn("Milestone {} for deal {} not found, cannot refund", milestoneId, dealId);
+                    return new MilestoneState("REFUNDED");
+                } else {
+                    String currentStatus = existing.getStatus();
+                    if ("PAID_HELD".equals(currentStatus)) {
+                        log.info("Milestone {} for deal {} transitioned from PAID_HELD to REFUNDED", milestoneId, dealId);
+                        existing.setStatus("REFUNDED");
+                        return existing;
+                    } else {
+                        log.warn("Milestone {} for deal {} is in state {}, cannot refund", 
+                            milestoneId, dealId, currentStatus);
+                        return existing;
+                    }
+                }
+            });
+    }
+    
+    /**
+     * STEP 2: Set milestone status to RELEASED (admin action).
+     * Only transitions from PAID_HELD to RELEASED.
+     */
+    public void setMilestoneReleased(String dealId, String milestoneId) {
+        log.info("===== STEP 2: MILESTONE RELEASE TRANSITION =====");
+        log.info("dealId: {}, milestoneId: {}", dealId, milestoneId);
+        
+        STATE_STORAGE.computeIfAbsent(dealId, k -> new ConcurrentHashMap<>())
+            .compute(milestoneId, (key, existing) -> {
+                if (existing == null) {
+                    log.warn("Milestone {} for deal {} not found, cannot release", milestoneId, dealId);
+                    return null;
+                } else {
+                    String currentStatus = existing.getStatus();
+                    if ("PAID_HELD".equals(currentStatus)) {
+                        log.info("Milestone {} for deal {} transitioned from PAID_HELD to RELEASED", milestoneId, dealId);
+                        existing.setStatus("RELEASED");
+                        return existing;
+                    } else {
+                        log.warn("Milestone {} for deal {} is in state {}, cannot release", 
+                            milestoneId, dealId, currentStatus);
+                        return existing;
+                    }
+                }
+            });
+    }
+    
+    /**
+     * Legacy method for backward compatibility.
+     */
+    @Deprecated
+    public void setMilestoneFunded(String dealId, String milestoneId) {
+        setMilestonePaidHeld(dealId, milestoneId);
     }
     
     /**

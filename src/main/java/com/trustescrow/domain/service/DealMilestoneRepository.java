@@ -11,4 +11,7 @@ public interface DealMilestoneRepository extends JpaRepository<DealMilestone, UU
     List<DealMilestone> findByDealIdOrderByOrderIndexAsc(UUID dealId);
     
     long countByDealId(UUID dealId);
+    
+    // STEP 2: Find milestone by deal and milestone ID
+    java.util.Optional<DealMilestone> findByDealIdAndId(UUID dealId, UUID milestoneId);
 }
