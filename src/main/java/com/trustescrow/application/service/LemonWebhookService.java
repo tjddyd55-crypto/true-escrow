@@ -164,30 +164,28 @@ public class LemonWebhookService {
      * - meta.custom_data.dealId / milestoneId
      * - data.attributes.custom.checkout_data (primary path per spec)
      */
+    /**
+     * STEP 1: Parse webhook payload defensively.
+     * Extracts: event_name, dealId, milestoneId, orderId, checkoutId, orderStatus
+     */
     private ParsedWebhookData parsePayload(JsonNode payload) {
-        log.info("===== STEP 1: WEBHOOK PARSING START =====");
-        
         try {
             ParsedWebhookData parsed = new ParsedWebhookData();
             
             // Parse event_name (meta.event_name or event_name)
-            log.info("Parsing event_name...");
             JsonNode meta = payload.path("meta");
             parsed.eventName = meta.path("event_name").asText(null);
             if (parsed.eventName == null || parsed.eventName.isEmpty()) {
                 parsed.eventName = payload.path("event_name").asText(null);
             }
-            log.info("Extracted event_name: {}", parsed.eventName != null ? parsed.eventName : "(null)");
             
             // STEP 1: Primary path - data.attributes.custom.checkout_data (per spec)
-            log.info("Parsing data.attributes.custom.checkout_data (primary path)...");
             JsonNode data = payload.path("data");
             JsonNode attributes = data.path("attributes");
             JsonNode custom = attributes.path("custom");
             JsonNode checkoutData = custom.path("checkout_data");
             
             if (checkoutData != null && !checkoutData.isMissingNode()) {
-                log.info("Found checkout_data node, extracting dealId and milestoneId...");
                 parsed.dealId = checkoutData.path("dealId").asText(null);
                 if (parsed.dealId == null || parsed.dealId.isEmpty()) {
                     parsed.dealId = checkoutData.path("deal_id").asText(null);
@@ -197,17 +195,10 @@ public class LemonWebhookService {
                 if (parsed.milestoneId == null || parsed.milestoneId.isEmpty()) {
                     parsed.milestoneId = checkoutData.path("milestone_id").asText(null);
                 }
-                
-                log.info("From checkout_data - dealId: {}, milestoneId: {}", 
-                    parsed.dealId != null ? parsed.dealId : "(null)",
-                    parsed.milestoneId != null ? parsed.milestoneId : "(null)");
-            } else {
-                log.warn("checkout_data node not found in data.attributes.custom, trying alternative paths...");
             }
             
             // Fallback: meta.custom_data.dealId / milestoneId
             if (parsed.dealId == null || parsed.dealId.isEmpty()) {
-                log.info("Trying fallback path: meta.custom_data...");
                 JsonNode customData = meta.path("custom_data");
                 parsed.dealId = customData.path("dealId").asText(null);
                 if (parsed.dealId == null || parsed.dealId.isEmpty()) {
@@ -218,15 +209,10 @@ public class LemonWebhookService {
                 if (parsed.milestoneId == null || parsed.milestoneId.isEmpty()) {
                     parsed.milestoneId = customData.path("milestone_id").asText(null);
                 }
-                
-                log.info("From meta.custom_data - dealId: {}, milestoneId: {}", 
-                    parsed.dealId != null ? parsed.dealId : "(null)",
-                    parsed.milestoneId != null ? parsed.milestoneId : "(null)");
             }
             
             // Parse data.id (order ID)
             parsed.orderId = data.path("id").asText(null);
-            log.info("Extracted orderId: {}", parsed.orderId != null ? parsed.orderId : "(null)");
             
             // STEP 1: Parse checkout_id (from relationships or attributes)
             JsonNode relationships = data.path("relationships");
@@ -234,43 +220,26 @@ public class LemonWebhookService {
             JsonNode checkoutDataNode = checkout.path("data");
             parsed.checkoutId = checkoutDataNode.path("id").asText(null);
             if (parsed.checkoutId == null || parsed.checkoutId.isEmpty()) {
-                // Alternative: from attributes
                 parsed.checkoutId = attributes.path("checkout_id").asText(null);
             }
-            log.info("Extracted checkoutId: {}", parsed.checkoutId != null ? parsed.checkoutId : "(null)");
             
             // Parse data.attributes.status
             parsed.orderStatus = attributes.path("status").asText(null);
-            log.info("Extracted orderStatus: {}", parsed.orderStatus != null ? parsed.orderStatus : "(null)");
             
             // Parse amount and currency
             String totalStr = attributes.path("total").asText(null);
             if (totalStr != null && !totalStr.isEmpty()) {
                 try {
                     parsed.totalAmount = new BigDecimal(totalStr);
-                    log.info("Extracted totalAmount: {}", parsed.totalAmount);
                 } catch (NumberFormatException e) {
-                    log.warn("Invalid total amount format: {}", totalStr);
+                    log.warn("[WEBHOOK] Invalid total amount format: {}", totalStr);
                 }
             }
             parsed.currency = attributes.path("currency").asText(null);
-            log.info("Extracted currency: {}", parsed.currency != null ? parsed.currency : "(null)");
-            
-            // Final validation log (STEP 1: Structured logging)
-            log.info("===== STEP 1: WEBHOOK PARSING RESULT =====");
-            log.info("event_name: {}", parsed.eventName != null ? parsed.eventName : "(null)");
-            log.info("dealId: {}", parsed.dealId != null ? parsed.dealId : "(null)");
-            log.info("milestoneId: {}", parsed.milestoneId != null ? parsed.milestoneId : "(null)");
-            log.info("orderId: {}", parsed.orderId != null ? parsed.orderId : "(null)");
-            log.info("checkoutId: {}", parsed.checkoutId != null ? parsed.checkoutId : "(null)");
-            log.info("orderStatus: {}", parsed.orderStatus != null ? parsed.orderStatus : "(null)");
-            log.info("==========================================");
             
             return parsed;
         } catch (Exception e) {
-            log.error("===== STEP 1: WEBHOOK PARSING FAILED =====");
-            log.error("Error: {}", e.getMessage(), e);
-            log.error("==========================================");
+            log.error("[WEBHOOK] Failed to parse payload: {}", e.getMessage(), e);
             return null;
         }
     }
