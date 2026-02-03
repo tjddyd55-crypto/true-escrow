@@ -391,7 +391,8 @@ public class LemonWebhookService {
             Optional<DealMilestone> milestoneOpt = milestoneRepository.findByDealIdAndId(dealUuid, milestoneUuid);
             if (milestoneOpt.isPresent()) {
                 DealMilestone milestone = milestoneOpt.get();
-                if (milestone.getStatus() == DealMilestone.MilestoneStatus.PAID_HELD) {
+                if (milestone.getStatus() == DealMilestone.MilestoneStatus.FUNDS_HELD ||
+                    milestone.getStatus() == DealMilestone.MilestoneStatus.PAID_HELD) {
                     milestone.updateStatus(DealMilestone.MilestoneStatus.REFUNDED);
                     milestoneRepository.save(milestone);
                     log.info("[ESCROW] deal={} milestone={} → REFUNDED (orderId={})", 

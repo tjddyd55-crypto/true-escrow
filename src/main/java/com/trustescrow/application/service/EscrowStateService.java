@@ -74,39 +74,35 @@ public class EscrowStateService {
     }
     
     /**
-     * STEP 2: Set milestone status to PAID_HELD (escrow hold).
-     * Only transitions from PENDING to PAID_HELD.
+     * MASTER TASK: Set milestone status to FUNDS_HELD (escrow hold).
+     * Only transitions from PENDING to FUNDS_HELD.
+     * 
+     * Note: This method name is kept as setMilestonePaidHeld for backward compatibility,
+     * but internally uses FUNDS_HELD status.
      */
     public void setMilestonePaidHeld(String dealId, String milestoneId) {
-        log.info("===== STEP 2: MILESTONE STATE TRANSITION =====");
-        log.info("dealId: {}, milestoneId: {}", dealId, milestoneId);
-        log.info("Target state: PAID_HELD (from PENDING)");
+        log.info("[ESCROW] Payment received: dealId={}, milestoneId={}", dealId, milestoneId);
         
         STATE_STORAGE.computeIfAbsent(dealId, k -> {
-            log.info("Creating new state entry for deal: {}", dealId);
+            log.info("[ESCROW] Creating new state entry for deal: {}", dealId);
             return new ConcurrentHashMap<>();
         }).compute(milestoneId, (key, existing) -> {
             if (existing == null) {
-                log.info("Milestone {} for deal {} set to PAID_HELD (from PENDING - new entry)", milestoneId, dealId);
-                log.info("===== STEP 2: STATE TRANSITION SUCCESS =====");
-                return new MilestoneState("PAID_HELD");
+                log.info("[ESCROW] Milestone {} for deal {} set to FUNDS_HELD (from PENDING - new entry)", milestoneId, dealId);
+                return new MilestoneState("FUNDS_HELD");
             } else {
                 String currentStatus = existing.getStatus();
-                log.info("Current milestone status: {}", currentStatus);
                 
                 if ("PENDING".equals(currentStatus)) {
-                    log.info("Milestone {} for deal {} transitioned from PENDING to PAID_HELD", milestoneId, dealId);
-                    existing.setStatus("PAID_HELD");
-                    log.info("===== STEP 2: STATE TRANSITION SUCCESS =====");
+                    log.info("[ESCROW] Milestone {} for deal {} transitioned from PENDING to FUNDS_HELD", milestoneId, dealId);
+                    existing.setStatus("FUNDS_HELD");
                     return existing;
-                } else if ("PAID_HELD".equals(currentStatus)) {
-                    log.info("Milestone {} for deal {} already in PAID_HELD state, skipping", milestoneId, dealId);
-                    log.info("===== STEP 2: STATE ALREADY PAID_HELD (SKIP) =====");
+                } else if ("FUNDS_HELD".equals(currentStatus) || "PAID_HELD".equals(currentStatus)) {
+                    log.info("[ESCROW] Milestone {} for deal {} already in FUNDS_HELD state, skipping", milestoneId, dealId);
                     return existing;
                 } else {
-                    log.warn("Milestone {} for deal {} is in state {}, cannot transition to PAID_HELD", 
+                    log.warn("[ESCROW] Milestone {} for deal {} is in state {}, cannot transition to FUNDS_HELD", 
                         milestoneId, dealId, currentStatus);
-                    log.warn("===== STEP 2: STATE TRANSITION BLOCKED =====");
                     return existing;
                 }
             }
