@@ -68,13 +68,15 @@ export async function GET(
       ];
     }
     
-    // Format response for frontend
+    // STEP 3: Format response for frontend with payment details
     const formattedMilestones = milestones.map((m: any) => ({
       id: m.id || "deposit",
       title: m.id === "deposit" ? "Deposit" : m.id,
-      amount: 100000, // Default amount (can be enhanced later)
-      currency: "USD",
+      amount: m.amount || 100000, // Use amount from backend if available
+      currency: m.currency || "USD",
       status: m.status || "PENDING",
+      orderId: m.orderId || null, // STEP 3: Lemon Squeezy order ID
+      paidAt: m.paidAt || null, // STEP 3: Payment timestamp
     }));
     
     console.log("Formatted milestones:", formattedMilestones);

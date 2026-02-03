@@ -14,21 +14,11 @@ export async function GET() {
   const lemonStoreIdPresent = !!process.env.LEMON_STORE_ID;
   const lemonVariantIdPresent = !!process.env.LEMON_VARIANT_ID;
   
-  // API Key prefix only (never full key)
-  // Extract prefix safely: sk_test_ (8 chars) or sk_live_ (8 chars)
+  // STEP 1: API Key 존재 여부만 확인 (prefix 검사 제거)
   const lemonKey = process.env.LEMON_API_KEY;
-  let lemonKeyPrefix: string | null = null;
-  if (lemonKey) {
-    const trimmed = lemonKey.trim();
-    if (trimmed.startsWith("sk_test_")) {
-      lemonKeyPrefix = "sk_test_";
-    } else if (trimmed.startsWith("sk_live_")) {
-      lemonKeyPrefix = "sk_live_";
-    } else if (trimmed.length > 0) {
-      // Unknown format - show first 7 chars only for safety
-      lemonKeyPrefix = trimmed.slice(0, 7) + "...";
-    }
-  }
+  const lemonKeyPresent = lemonKey != null && lemonKey.trim().length > 0;
+  // Prefix 정보는 보안상 노출하지 않음 (JWT format)
+  const lemonKeyPrefix: string | null = lemonKeyPresent ? "JWT" : null;
   
   const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? null;
   

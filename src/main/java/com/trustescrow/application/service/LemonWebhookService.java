@@ -323,38 +323,43 @@ public class LemonWebhookService {
             log.info("dealId is not UUID format, using as string: {}", parsed.dealId);
         }
         
-        // Update milestone status to PAID_HELD
-        if (parsed.milestoneId != null && !parsed.milestoneId.isEmpty()) {
-            UUID milestoneUuid = null;
-            try {
-                milestoneUuid = UUID.fromString(parsed.milestoneId);
-            } catch (IllegalArgumentException e) {
-                log.info("milestoneId is not UUID format, using as string: {}", parsed.milestoneId);
-            }
-            
-            if (milestoneUuid != null && dealUuid != null) {
-                // Update DB milestone
-                Optional<DealMilestone> milestoneOpt = milestoneRepository.findByDealIdAndId(dealUuid, milestoneUuid);
-                if (milestoneOpt.isPresent()) {
-                    DealMilestone milestone = milestoneOpt.get();
-                    if (milestone.getStatus() == DealMilestone.MilestoneStatus.PENDING) {
-                        milestone.updateStatus(DealMilestone.MilestoneStatus.PAID_HELD);
-                        milestoneRepository.save(milestone);
-                        log.info("Milestone {} updated to PAID_HELD", milestoneUuid);
-                    } else {
-                        log.info("Milestone {} already in status {}, skipping", 
-                            milestoneUuid, milestone.getStatus());
-                    }
-                } else {
-                    log.warn("Milestone {} not found for deal {}", milestoneUuid, dealUuid);
+            // STEP 2: Update milestone status to PAID_HELD
+            if (parsed.milestoneId != null && !parsed.milestoneId.isEmpty()) {
+                UUID milestoneUuid = null;
+                try {
+                    milestoneUuid = UUID.fromString(parsed.milestoneId);
+                } catch (IllegalArgumentException e) {
+                    log.info("milestoneId is not UUID format, using as string: {}", parsed.milestoneId);
                 }
+                
+                if (milestoneUuid != null && dealUuid != null) {
+                    // Update DB milestone
+                    Optional<DealMilestone> milestoneOpt = milestoneRepository.findByDealIdAndId(dealUuid, milestoneUuid);
+                    if (milestoneOpt.isPresent()) {
+                        DealMilestone milestone = milestoneOpt.get();
+                        if (milestone.getStatus() == DealMilestone.MilestoneStatus.PENDING) {
+                            milestone.updateStatus(DealMilestone.MilestoneStatus.PAID_HELD);
+                            milestoneRepository.save(milestone);
+                            log.info("[ESCROW] deal={} milestone={} → PAID_HELD (orderId={})", 
+                                parsed.dealId, parsed.milestoneId, parsed.orderId);
+                        } else {
+                            log.info("[ESCROW] deal={} milestone={} already in status {}, skipping", 
+                                parsed.dealId, parsed.milestoneId, milestone.getStatus());
+                        }
+                    } else {
+                        log.warn("Milestone {} not found for deal {}", milestoneUuid, dealUuid);
+                    }
+                }
+                
+                // Update in-memory state (for demo deals with string IDs)
+                escrowStateService.setMilestonePaidHeld(parsed.dealId, parsed.milestoneId);
+                log.info("[ESCROW] In-memory state updated: deal={} milestone={} → PAID_HELD", 
+                    parsed.dealId, parsed.milestoneId);
+            } else {
+                log.warn("[ESCROW] milestoneId is missing, cannot update milestone state");
             }
-            
-            // Update in-memory state (for demo deals with string IDs)
-            escrowStateService.setMilestonePaidHeld(parsed.dealId, parsed.milestoneId);
-        }
         
-        // Update Deal status: First milestone paid → Deal = FUNDS_HELD
+        // STEP 2: Update Deal status: First milestone paid → Deal = FUNDS_HELD
         if (dealUuid != null) {
             Optional<Deal> dealOpt = dealRepository.findById(dealUuid);
             if (dealOpt.isPresent()) {
@@ -363,14 +368,17 @@ public class LemonWebhookService {
                     try {
                         dealStateService.transitionDeal(dealUuid, DealState.FUNDS_HELD, "system", 
                             String.format("{\"order_id\":\"%s\",\"webhook\":\"lemon\"}", parsed.orderId));
-                        log.info("Deal {} transitioned from CREATED to FUNDS_HELD", dealUuid);
+                        log.info("[ESCROW] deal={} → FUNDS_HELD (first milestone paid)", parsed.dealId);
                     } catch (Exception e) {
                         log.error("Failed to transition deal {} to FUNDS_HELD: {}", dealUuid, e.getMessage());
                     }
                 } else {
-                    log.info("Deal {} already in state {}, skipping transition", dealUuid, deal.getState());
+                    log.info("[ESCROW] deal={} already in state {}, skipping transition", 
+                        parsed.dealId, deal.getState());
                 }
             }
+        } else {
+            log.info("[ESCROW] dealId is not UUID format, skipping DB deal state update (using in-memory only)");
         }
     }
     
@@ -394,7 +402,7 @@ public class LemonWebhookService {
             log.info("dealId or milestoneId is not UUID format, using in-memory state only");
         }
         
-        // Update DB milestone if UUIDs are valid
+        // STEP 2: Update DB milestone if UUIDs are valid
         if (dealUuid != null && milestoneUuid != null) {
             Optional<DealMilestone> milestoneOpt = milestoneRepository.findByDealIdAndId(dealUuid, milestoneUuid);
             if (milestoneOpt.isPresent()) {
@@ -402,16 +410,19 @@ public class LemonWebhookService {
                 if (milestone.getStatus() == DealMilestone.MilestoneStatus.PAID_HELD) {
                     milestone.updateStatus(DealMilestone.MilestoneStatus.REFUNDED);
                     milestoneRepository.save(milestone);
-                    log.info("Milestone {} updated to REFUNDED", milestoneUuid);
+                    log.info("[ESCROW] deal={} milestone={} → REFUNDED (orderId={})", 
+                        parsed.dealId, parsed.milestoneId, parsed.orderId);
                 } else {
-                    log.info("Milestone {} is in status {}, cannot refund", 
-                        milestoneUuid, milestone.getStatus());
+                    log.info("[ESCROW] deal={} milestone={} is in status {}, cannot refund", 
+                        parsed.dealId, parsed.milestoneId, milestone.getStatus());
                 }
             }
         }
         
         // Update in-memory state
         escrowStateService.setMilestoneRefunded(parsed.dealId, parsed.milestoneId);
+        log.info("[ESCROW] In-memory state updated: deal={} milestone={} → REFUNDED", 
+            parsed.dealId, parsed.milestoneId);
     }
     
     /**

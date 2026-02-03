@@ -11,6 +11,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -26,6 +28,8 @@ public class DealController {
     private final TimelineService timelineService;
     private final ContractInstanceRepository instanceRepository;
     private final com.trustescrow.application.service.EscrowStateService escrowStateService;
+    private final com.trustescrow.domain.service.PaymentInfoRepository paymentInfoRepository;
+    private final com.trustescrow.domain.service.DealMilestoneRepository milestoneRepository;
     
     @PostMapping
     public ResponseEntity<ApiResponse<DealResponse>> createDeal(
@@ -64,22 +68,70 @@ public class DealController {
         Deal deal = dealService.getDeal(id);
         DealResponse response = DealResponse.from(deal);
         
-        // STEP 3: Add milestone status from in-memory escrow state
+        // STEP 3: Add milestone status with payment details
         String dealIdStr = id.toString();
         log.info("Querying milestone status for dealId: {}", dealIdStr);
         
+        // Get milestone status from in-memory escrow state
         var milestones = escrowStateService.getDealMilestones(dealIdStr);
         log.info("Found {} milestones in state storage", milestones.size());
+        
+        // Get payment info for this deal (if exists)
+        var paymentOpt = paymentInfoRepository.findByDealId(id);
+        String orderId = paymentOpt.map(p -> p.getExternalPaymentId()).orElse(null);
+        Instant paidAt = paymentOpt.map(p -> p.getPaidAt()).orElse(null);
+        
+        // Get milestone details from DB (if UUID format)
+        var dbMilestones = milestoneRepository.findByDealIdOrderByOrderIndexAsc(id);
         
         // Convert to milestone list for response
         var milestoneList = milestones.entrySet().stream()
             .map(entry -> {
                 String milestoneId = entry.getKey();
                 String status = entry.getValue().getStatus();
-                log.info("  - milestoneId: {}, status: {}", milestoneId, status);
-                return new DealResponse.MilestoneInfo(milestoneId, status);
+                
+                // Try to find DB milestone for amount/currency
+                var dbMilestone = dbMilestones.stream()
+                    .filter(m -> m.getId().toString().equals(milestoneId) || 
+                               milestoneId.equals(m.getId().toString()))
+                    .findFirst();
+                
+                BigDecimal amount = dbMilestone.map(m -> m.getAmount()).orElse(null);
+                String currency = deal.getCurrency(); // Use deal currency as fallback
+                
+                log.info("  - milestoneId: {}, status: {}, amount: {}, orderId: {}, paidAt: {}", 
+                    milestoneId, status, amount, orderId, paidAt);
+                
+                return new DealResponse.MilestoneInfo(
+                    milestoneId, 
+                    status, 
+                    amount, 
+                    currency, 
+                    orderId, 
+                    paidAt
+                );
             })
             .toList();
+        
+        // If no in-memory milestones, create from DB milestones
+        if (milestoneList.isEmpty() && !dbMilestones.isEmpty()) {
+            milestoneList = dbMilestones.stream()
+                .map(m -> {
+                    String milestoneId = m.getId().toString();
+                    String status = m.getStatus().name();
+                    log.info("  - milestoneId: {}, status: {}, amount: {}", 
+                        milestoneId, status, m.getAmount());
+                    return new DealResponse.MilestoneInfo(
+                        milestoneId,
+                        status,
+                        m.getAmount(),
+                        deal.getCurrency(),
+                        orderId,
+                        paidAt
+                    );
+                })
+                .toList();
+        }
         
         response.setMilestones(milestoneList);
         

@@ -191,6 +191,18 @@ export default function DealDetail() {
             <p style={{ color: statusColor, fontWeight: "bold" }}>
               Status: {statusText}
             </p>
+            
+            {/* STEP 3: Payment details for admin visibility */}
+            {m.orderId && (
+              <p style={{ fontSize: 12, color: "#666", marginTop: 4 }}>
+                Order ID: {m.orderId}
+              </p>
+            )}
+            {m.paidAt && (
+              <p style={{ fontSize: 12, color: "#666", marginTop: 4 }}>
+                Paid At: {new Date(m.paidAt).toLocaleString()}
+              </p>
+            )}
 
             {m.status === "PENDING" && (
               <>
@@ -220,9 +232,23 @@ export default function DealDetail() {
             )}
             
             {(m.status === "PAID_HELD" || m.status === "FUNDED") && (
-              <p style={{ fontSize: 12, color: "#00b894", marginTop: 12, marginBottom: 8 }}>
-                ✅ Funds are held in escrow. Waiting for admin release.
-              </p>
+              <div style={{ 
+                fontSize: 12, 
+                color: "#00b894", 
+                marginTop: 12, 
+                marginBottom: 8,
+                padding: 8,
+                backgroundColor: "#f0fff4",
+                border: "1px solid #00b894",
+                borderRadius: 4
+              }}>
+                <p style={{ margin: 0, fontWeight: "bold" }}>
+                  ✅ 이 금액은 에스크로에 보관 중입니다
+                </p>
+                <p style={{ margin: "4px 0 0 0" }}>
+                  Funds are held in escrow. Waiting for admin release.
+                </p>
+              </div>
             )}
             
             {m.status === "RELEASED" && (

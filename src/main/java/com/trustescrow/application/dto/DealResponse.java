@@ -28,15 +28,31 @@ public class DealResponse {
     private Instant updatedAt;
     private List<MilestoneInfo> milestones;
     
+    /**
+     * STEP 3: Milestone information with payment details.
+     */
     @Data
     @Builder
     public static class MilestoneInfo {
         private String id;
-        private String status; // "PENDING" | "FUNDED" | "RELEASED"
+        private String status; // "PENDING" | "PAID_HELD" | "RELEASED" | "REFUNDED"
+        private BigDecimal amount; // STEP 3: Milestone amount
+        private String currency; // STEP 3: Currency
+        private String orderId; // STEP 3: Lemon Squeezy order ID
+        private Instant paidAt; // STEP 3: Payment timestamp
         
         public MilestoneInfo(String id, String status) {
             this.id = id;
             this.status = status;
+        }
+        
+        public MilestoneInfo(String id, String status, BigDecimal amount, String currency, String orderId, Instant paidAt) {
+            this.id = id;
+            this.status = status;
+            this.amount = amount;
+            this.currency = currency;
+            this.orderId = orderId;
+            this.paidAt = paidAt;
         }
     }
     

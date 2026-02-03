@@ -11,50 +11,20 @@ export async function createLemonCheckout(dealId?: string, milestoneId?: string)
   console.log(`[${requestId}]    - URL 확인:`, apiUrl === "https://api.lemonsqueezy.com/v1/checkouts" ? "✅ 정확함" : "❌ 불일치");
   console.log(`[${requestId}]    - 도메인 확인:`, apiUrl.startsWith("https://api.lemonsqueezy.com") ? "✅ api.lemonsqueezy.com" : "❌ 다른 도메인");
   
-  // C3) API Key trim 처리 및 prefix 검증
+  // STEP 1: API Key 최소 검증만 수행 (prefix 검사 제거)
   const rawApiKey = process.env.LEMON_API_KEY || "";
   const apiKey = rawApiKey.trim();
   const apiKeyExists = apiKey.length > 0;
   
-  console.log(`[${requestId}] 2) process.env.LEMON_API_KEY 존재 여부:`, apiKeyExists ? "✅ 존재" : "❌ 없음");
-  console.log(`[${requestId}]    - 원본 길이:`, rawApiKey.length);
-  console.log(`[${requestId}]    - Trim 후 길이:`, apiKey.length);
-  console.log(`[${requestId}]    - Trim 필요 여부:`, rawApiKey.length !== apiKey.length ? "⚠️ 공백 제거됨" : "✅ 공백 없음");
-  
-  // C1) API Key 모드 불일치 체크 및 prefix 추출
-  let apiKeyPrefix = "none";
-  let keyMode = "unknown";
-  let keyFormatValid = false;
-  
-  if (apiKeyExists) {
-    if (apiKey.startsWith("sk_test_")) {
-      apiKeyPrefix = "sk_test_";
-      keyMode = "test";
-      keyFormatValid = true;
-    } else if (apiKey.startsWith("sk_live_")) {
-      apiKeyPrefix = "sk_live_";
-      keyMode = "live";
-      keyFormatValid = true;
-    } else {
-      // Unknown format - show first 10 chars for debugging (safe)
-      const preview = apiKey.substring(0, Math.min(10, apiKey.length));
-      apiKeyPrefix = `unknown (시작: "${preview}")`;
-      console.warn(`[${requestId}]    ⚠️ API Key가 예상된 형식이 아닙니다. sk_test_ 또는 sk_live_로 시작해야 합니다.`);
-    }
+  if (!apiKeyExists) {
+    console.error(`[${requestId}] LEMON_API_KEY is missing`);
+    throw new Error("LEMON_API_KEY is missing");
   }
   
-  console.log(`[${requestId}] 3) process.env.LEMON_API_KEY prefix:`, apiKeyPrefix);
-  console.log(`[${requestId}]    - Key mode:`, keyMode);
-  console.log(`[${requestId}]    - Key format valid:`, keyFormatValid ? "✅ 맞음" : "❌ 아님");
-  console.log(`[${requestId}]    - sk_test_ 확인:`, apiKeyPrefix === "sk_test_" ? "✅ 맞음" : "❌ 아님");
-  
-  // 추가 검증: 키가 이미 prefix를 포함하고 있는지 확인 (중복 방지)
-  if (apiKeyExists && keyFormatValid) {
-    // 키가 정상적으로 prefix를 포함하고 있음
-    console.log(`[${requestId}]    - Key prefix 포함 여부: ✅ 정상 (${apiKeyPrefix}로 시작)`);
-  } else if (apiKeyExists && !keyFormatValid) {
-    console.error(`[${requestId}]    - ⚠️ API Key 형식 오류: sk_test_ 또는 sk_live_로 시작해야 합니다.`);
-    console.error(`[${requestId}]    - 현재 키 시작 부분: "${apiKey.substring(0, Math.min(15, apiKey.length))}"`);
+  console.log(`[${requestId}] 2) LEMON_API_KEY loaded (JWT format, prefix check skipped)`);
+  console.log(`[${requestId}]    - Key length: ${apiKey.length} chars`);
+  if (rawApiKey.length !== apiKey.length) {
+    console.log(`[${requestId}]    - Trim applied: ${rawApiKey.length} → ${apiKey.length} chars`);
   }
   
   // C3) Headers 규격 체크 (JSON:API) - trim 처리된 key 사용
@@ -64,18 +34,15 @@ export async function createLemonCheckout(dealId?: string, milestoneId?: string)
     "Content-Type": "application/vnd.api+json",
   };
   const headersForLog = {
-    Authorization: apiKeyExists ? `Bearer ${apiKeyPrefix}...` : "Bearer (missing)",
+    Authorization: "Bearer [REDACTED]",
     Accept: headers.Accept,
     "Content-Type": headers["Content-Type"],
   };
-  console.log(`[${requestId}] 4) Headers 전체:`);
+  console.log(`[${requestId}] 3) Headers:`);
   console.log(`[${requestId}]    `, JSON.stringify(headersForLog, null, 2));
-  console.log(`[${requestId}]    - Authorization 헤더 존재:`, headers.Authorization ? "✅ 있음" : "❌ 없음");
-  console.log(`[${requestId}]    - Authorization prefix:`, apiKeyPrefix);
-  console.log(`[${requestId}]    - Content-Type:`, headers["Content-Type"]);
-  console.log(`[${requestId}]    - Accept:`, headers.Accept);
-  console.log(`[${requestId}]    - Content-Type 확인:`, headers["Content-Type"] === "application/vnd.api+json" ? "✅ 맞음" : "❌ 틀림");
-  console.log(`[${requestId}]    - Accept 확인:`, headers.Accept === "application/vnd.api+json" ? "✅ 맞음" : "❌ 틀림");
+  console.log(`[${requestId}]    - Authorization: Present`);
+  console.log(`[${requestId}]    - Content-Type: ${headers["Content-Type"]}`);
+  console.log(`[${requestId}]    - Accept: ${headers.Accept}`);
   
   // Request body 준비 - Lemon JSON:API 스펙에 정확히 맞춤
   const storeId = (process.env.LEMON_STORE_ID || "").trim();
