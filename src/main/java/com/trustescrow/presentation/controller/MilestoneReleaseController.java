@@ -128,6 +128,15 @@ public class MilestoneReleaseController {
             log.info("[RELEASE_APPROVAL] Audit log recorded: dealId={}, milestoneId={}, actor={}", 
                 dealId, milestoneId, actor);
             
+            // STEP 7: Record on-chain
+            try {
+                com.trustescrow.application.service.BlockchainService blockchainService = null; // TODO: Inject
+                // blockchainService.recordMilestoneStatus(dealId, milestoneId, 
+                //     com.trustescrow.domain.model.OnChainRecord.RecordStatus.RELEASED, "ADMIN");
+            } catch (Exception e) {
+                log.warn("[BLOCKCHAIN] Failed to record on-chain (non-critical): {}", e.getMessage());
+            }
+            
             // STEP 4: Update deal status accordingly
             // If all milestones are released, mark deal as COMPLETED
             List<DealMilestone> allMilestones = milestoneRepository.findByDealIdOrderByOrderIndexAsc(dealId);

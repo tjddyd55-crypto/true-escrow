@@ -46,6 +46,7 @@ public class LemonWebhookService {
     private final PaymentInfoRepository paymentInfoRepository;
     private final DealStateService dealStateService;
     private final EscrowStateService escrowStateService;
+    private final BlockchainService blockchainService; // STEP 7
     private final ObjectMapper objectMapper;
     
     /**
@@ -320,10 +321,24 @@ public class LemonWebhookService {
                     }
                 }
                 
-                // Update in-memory state (for demo deals with string IDs)
-                escrowStateService.setMilestonePaidHeld(parsed.dealId, parsed.milestoneId);
-                log.info("[ESCROW] In-memory state updated: deal={} milestone={} → PAID_HELD", 
-                    parsed.dealId, parsed.milestoneId);
+            // Update in-memory state (for demo deals with string IDs)
+            escrowStateService.setMilestonePaidHeld(parsed.dealId, parsed.milestoneId);
+            log.info("[ESCROW] In-memory state updated: deal={} milestone={} → PAID_HELD", 
+                parsed.dealId, parsed.milestoneId);
+            
+            // STEP 7: Record on-chain (if milestone is UUID format)
+            if (milestoneUuid != null && dealUuid != null) {
+                try {
+                    blockchainService.recordMilestoneStatus(
+                        dealUuid, 
+                        milestoneUuid, 
+                        com.trustescrow.domain.model.OnChainRecord.RecordStatus.FUNDS_HELD,
+                        "SYSTEM"
+                    );
+                } catch (Exception e) {
+                    log.warn("[BLOCKCHAIN] Failed to record on-chain (non-critical): {}", e.getMessage());
+                }
+            }
             } else {
                 log.warn("[ESCROW] milestoneId is missing, cannot update milestone state");
             }

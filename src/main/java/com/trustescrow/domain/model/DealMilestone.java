@@ -53,22 +53,31 @@ public class DealMilestone {
     private Instant completedAt;
     
     /**
-     * STEP 4: Milestone status for escrow flow with approval system.
+     * STEP 6: Milestone status for escrow flow with approval and dispute system.
      * - PENDING: Initial state, payment not yet made
      * - PAID_HELD: Payment received, funds held in escrow
      * - RELEASE_REQUESTED: Release request submitted (awaiting admin approval)
      * - RELEASED: Funds released to seller (admin approved)
      * - REFUNDED: Payment refunded to buyer
+     * - DISPUTED: Dispute raised (STEP 6)
+     * - DISPUTE_REVIEWING: Admin reviewing dispute (STEP 6)
+     * - DISPUTE_RESOLVED_RELEASE: Dispute resolved - release funds (STEP 6)
+     * - DISPUTE_RESOLVED_REFUND: Dispute resolved - refund funds (STEP 6)
      * 
      * State transitions (strict):
      * - PENDING → PAID_HELD (via webhook)
      * - PAID_HELD → RELEASE_REQUESTED (via release request API)
+     * - PAID_HELD → DISPUTED (via dispute API) - STEP 6
+     * - RELEASE_REQUESTED → DISPUTED (via dispute API) - STEP 6
      * - RELEASE_REQUESTED → RELEASED (via admin approval API)
-     * - RELEASE_REQUESTED → REFUNDED (via admin refund API)
+     * - DISPUTED → DISPUTE_REVIEWING (automatic when admin starts review)
+     * - DISPUTE_REVIEWING → DISPUTE_RESOLVED_RELEASE (via admin resolve API)
+     * - DISPUTE_REVIEWING → DISPUTE_RESOLVED_REFUND (via admin resolve API)
      * 
      * Reverse transitions are NOT allowed:
      * - RELEASED → PAID_HELD ❌
      * - REFUNDED → RELEASED ❌
+     * - DISPUTE_RESOLVED_* → DISPUTED ❌
      * 
      * Legacy statuses (for backward compatibility):
      * - IN_PROGRESS: Work in progress
@@ -77,13 +86,17 @@ public class DealMilestone {
      */
     public enum MilestoneStatus {
         PENDING,
-        PAID_HELD,          // STEP 2: Payment received, funds held
-        RELEASE_REQUESTED,   // STEP 4: Release request submitted
-        RELEASED,           // STEP 4: Funds released (admin approved)
-        REFUNDED,           // STEP 2: Payment refunded
-        IN_PROGRESS,        // Legacy
-        COMPLETED,          // Legacy
-        REJECTED            // Legacy
+        PAID_HELD,                  // STEP 2: Payment received, funds held
+        RELEASE_REQUESTED,          // STEP 4: Release request submitted
+        RELEASED,                   // STEP 4: Funds released (admin approved)
+        REFUNDED,                   // STEP 2: Payment refunded
+        DISPUTED,                   // STEP 6: Dispute raised
+        DISPUTE_REVIEWING,          // STEP 6: Admin reviewing dispute
+        DISPUTE_RESOLVED_RELEASE,   // STEP 6: Dispute resolved - release
+        DISPUTE_RESOLVED_REFUND,    // STEP 6: Dispute resolved - refund
+        IN_PROGRESS,                // Legacy
+        COMPLETED,                  // Legacy
+        REJECTED                    // Legacy
     }
     
     public void updateStatus(MilestoneStatus newStatus) {

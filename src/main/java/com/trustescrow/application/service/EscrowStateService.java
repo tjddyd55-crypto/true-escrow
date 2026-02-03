@@ -198,6 +198,34 @@ public class EscrowStateService {
     }
     
     /**
+     * STEP 6: Set milestone status to DISPUTED.
+     * Only transitions from PAID_HELD or RELEASE_REQUESTED to DISPUTED.
+     */
+    public void setMilestoneDisputed(String dealId, String milestoneId) {
+        log.info("[ESCROW] Dispute raised: dealId={}, milestoneId={}", dealId, milestoneId);
+        
+        STATE_STORAGE.computeIfAbsent(dealId, k -> new ConcurrentHashMap<>())
+            .compute(milestoneId, (key, existing) -> {
+                if (existing == null) {
+                    log.warn("[ESCROW] Milestone {} for deal {} not found, creating DISPUTED", milestoneId, dealId);
+                    return new MilestoneState("DISPUTED");
+                } else {
+                    String currentStatus = existing.getStatus();
+                    if ("PAID_HELD".equals(currentStatus) || "RELEASE_REQUESTED".equals(currentStatus)) {
+                        log.info("[ESCROW] Milestone {} for deal {} transitioned from {} to DISPUTED", 
+                            milestoneId, dealId, currentStatus);
+                        existing.setStatus("DISPUTED");
+                        return existing;
+                    } else {
+                        log.warn("[ESCROW] Milestone {} for deal {} is in state {}, cannot dispute", 
+                            milestoneId, dealId, currentStatus);
+                        return existing;
+                    }
+                }
+            });
+    }
+    
+    /**
      * Legacy method for backward compatibility.
      */
     @Deprecated
