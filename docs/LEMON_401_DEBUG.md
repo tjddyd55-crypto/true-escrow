@@ -83,6 +83,24 @@ Railway 로그에서 다음 5줄을 찾으세요:
    - URL에서 Store ID 확인: `https://app.lemonsqueezy.com/stores/{storeId}/products/...`
 
 2. **API로 확인 (개발 중):**
+   
+   **방법 1: Debug Helper 엔드포인트 사용 (권장)**
+   ```
+   GET /api/debug/lemon-variant?variantId=1270810
+   ```
+   - Development 모드에서만 사용 가능
+   - Production에서는 `ENABLE_LEMON_DEBUG=true` 환경변수 필요
+   - 응답 예시:
+     ```json
+     {
+       "variantId": "1270810",
+       "storeId": "805905",
+       "expectedStoreId": "805905",
+       "match": true
+     }
+     ```
+   
+   **방법 2: 직접 API 호출**
    ```bash
    curl -H "Authorization: Bearer sk_test_xxx" \
         -H "Accept: application/vnd.api+json" \
