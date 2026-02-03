@@ -75,6 +75,20 @@ public class OnChainRecord {
     }
     
     /**
+     * Set transaction hash (before confirmation).
+     */
+    public void setTransactionHash(String txHash) {
+        this.transactionHash = txHash;
+    }
+    
+    /**
+     * Set network.
+     */
+    public void setNetwork(String network) {
+        this.network = network;
+    }
+    
+    /**
      * Mark record as confirmed on blockchain.
      */
     public void markConfirmed(String txHash, Long blockNumber, String network) {

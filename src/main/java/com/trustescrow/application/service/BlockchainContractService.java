@@ -145,9 +145,16 @@ public class BlockchainContractService {
             );
             
             // Sign and send transaction
-            org.web3j.crypto.RawTransaction rawTransaction = 
-                org.web3j.crypto.TransactionEncoder.signMessage(transaction, credentials);
-            String hexValue = Numeric.toHexString(rawTransaction);
+            org.web3j.crypto.RawTransaction rawTransaction = org.web3j.crypto.RawTransaction.createTransaction(
+                nonce,
+                gasProvider.getGasPrice(),
+                gasProvider.getGasLimit(),
+                contractAddress,
+                encodedFunction
+            );
+            
+            byte[] signedMessage = org.web3j.crypto.TransactionEncoder.signMessage(rawTransaction, credentials);
+            String hexValue = Numeric.toHexString(signedMessage);
             
             EthSendTransaction ethSendTransaction = web3j.ethSendRawTransaction(hexValue).send();
             
