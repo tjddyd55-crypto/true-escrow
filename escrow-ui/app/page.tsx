@@ -22,6 +22,7 @@ export default function Home() {
       <hr style={{ margin: "40px 0" }} />
 
       <nav>
+        <a href="/chat">Chat Rooms</a> |{" "}
         <a href="/payment-info">Payment Info</a> |{" "}
         <a href="/terms">Terms</a> |{" "}
         <a href="/privacy">Privacy</a> |{" "}
