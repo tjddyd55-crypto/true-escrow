@@ -25,17 +25,35 @@ export default function AdminDashboard() {
   async function loadDashboard() {
     setLoading(true);
     try {
-      // TODO: Fetch from backend API
-      // For now, use mock data
-      setStats({
-        totalDeals: 42,
-        fundsHeld: 15,
-        releaseRequested: 8,
-        disputed: 3,
-        avgHoldingDays: 4.2,
-        delayedDeals: 5,
-      });
+      const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080";
       
+      // Fetch stats
+      const statsRes = await fetch(`${apiBaseUrl}/api/admin/dashboard/stats`);
+      if (statsRes.ok) {
+        const statsData = await statsRes.json();
+        setStats(statsData);
+      } else {
+        // Fallback to mock data
+        setStats({
+          totalDeals: 0,
+          fundsHeld: 0,
+          releaseRequested: 0,
+          disputed: 0,
+          avgHoldingDays: 0.0,
+          delayedDeals: 0,
+        });
+      }
+      
+      // Fetch anomalies
+      const anomaliesRes = await fetch(`${apiBaseUrl}/api/admin/dashboard/anomalies`);
+      if (anomaliesRes.ok) {
+        const anomaliesData = await anomaliesRes.json();
+        setAnomalies(anomaliesData);
+      } else {
+        setAnomalies([]);
+      }
+      
+      // TODO: Fetch deals list
       setDeals([
         {
           id: "deal-demo-001",
@@ -46,25 +64,18 @@ export default function AdminDashboard() {
           ],
         },
       ]);
-      
-      setAnomalies([
-        {
-          type: "FUNDS_HELD_OVER_7_DAYS",
-          dealId: "deal-001",
-          milestoneId: "deposit",
-          days: 8,
-          message: "Funds held for 8 days",
-        },
-        {
-          type: "RELEASE_REQUESTED_OVER_48H",
-          dealId: "deal-002",
-          milestoneId: "deposit",
-          hours: 50,
-          message: "Release requested 50 hours ago",
-        },
-      ]);
     } catch (err: any) {
       console.error("Failed to load dashboard:", err);
+      // Fallback to empty data
+      setStats({
+        totalDeals: 0,
+        fundsHeld: 0,
+        releaseRequested: 0,
+        disputed: 0,
+        avgHoldingDays: 0.0,
+        delayedDeals: 0,
+      });
+      setAnomalies([]);
     } finally {
       setLoading(false);
     }
