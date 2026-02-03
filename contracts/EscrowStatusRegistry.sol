@@ -129,7 +129,7 @@ contract EscrowStatusRegistry {
         require(!recorded[recordKey], "EscrowStatusRegistry: status already recorded");
         
         // If recording RELEASED or REFUNDED, check that no final status exists
-        if (status == STATUS_RELEASED || status == STATUS_RELEASED) {
+        if (status == STATUS_RELEASED || status == STATUS_REFUNDED) {
             require(
                 finalStatus[milestoneKey] == 0,
                 "EscrowStatusRegistry: final status already recorded for this milestone"
