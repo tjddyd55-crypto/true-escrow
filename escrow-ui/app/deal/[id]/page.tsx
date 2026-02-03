@@ -157,21 +157,25 @@ export default function DealDetail() {
       )}
 
       {deal.milestones?.map((m: any) => {
-        // STEP 4: Status text mapping
+        // STEP 4: Status text mapping (STEP 2: Updated for new states)
         const statusText = m.status === "PENDING" 
           ? "결제 대기" 
-          : m.status === "FUNDED" 
+          : m.status === "PAID_HELD" || m.status === "FUNDED"  // FUNDED for backward compatibility
           ? "에스크로 보류 중" 
           : m.status === "RELEASED"
           ? "지급 완료"
+          : m.status === "REFUNDED"
+          ? "환불 완료"
           : m.status;
         
         const statusColor = m.status === "PENDING" 
           ? "#f39c12" 
-          : m.status === "FUNDED" 
+          : m.status === "PAID_HELD" || m.status === "FUNDED"  // FUNDED for backward compatibility
           ? "#00b894" 
           : m.status === "RELEASED"
           ? "#0984e3"
+          : m.status === "REFUNDED"
+          ? "#e74c3c"
           : "#666";
         
         // STEP 4: Logging (outside JSX to avoid parsing issues)
@@ -215,15 +219,21 @@ export default function DealDetail() {
               </>
             )}
             
-            {m.status === "FUNDED" && (
+            {(m.status === "PAID_HELD" || m.status === "FUNDED") && (
               <p style={{ fontSize: 12, color: "#00b894", marginTop: 12, marginBottom: 8 }}>
-                ✅ Funds are held in escrow. Waiting for release.
+                ✅ Funds are held in escrow. Waiting for admin release.
               </p>
             )}
             
             {m.status === "RELEASED" && (
               <p style={{ fontSize: 12, color: "#0984e3", marginTop: 12, marginBottom: 8 }}>
-                ✅ Payment completed and released.
+                ✅ Payment completed and released to seller.
+              </p>
+            )}
+            
+            {m.status === "REFUNDED" && (
+              <p style={{ fontSize: 12, color: "#e74c3c", marginTop: 12, marginBottom: 8 }}>
+                ⚠️ Payment refunded to buyer.
               </p>
             )}
           </div>
