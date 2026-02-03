@@ -6,8 +6,18 @@ export async function POST(
   context: { params: Promise<{ id: string }> }
 ) {
   try {
-    await context.params; // params는 아직 사용하지 않지만 타입 요구사항을 충족
-    const url = await createLemonCheckout();
+    const { id: dealId } = await context.params;
+    
+    // Request body에서 milestoneId 추출 (옵셔널)
+    let milestoneId: string | undefined;
+    try {
+      const body = await request.json();
+      milestoneId = body.milestoneId;
+    } catch {
+      // Request body가 없거나 JSON이 아닌 경우 무시
+    }
+    
+    const url = await createLemonCheckout(dealId, milestoneId);
     return NextResponse.json({ checkoutUrl: url });
   } catch (e: any) {
     return NextResponse.json(

@@ -1,4 +1,4 @@
-export async function createLemonCheckout() {
+export async function createLemonCheckout(dealId?: string, milestoneId?: string) {
   console.log("===== LEMON CHECKOUT API CALL START =====");
   
   // 1) 실제 호출 URL 전체 (문자열 그대로)
@@ -26,11 +26,11 @@ export async function createLemonCheckout() {
   console.log("3) process.env.LEMON_API_KEY prefix:", apiKeyPrefix);
   console.log("   - sk_test_ 확인:", apiKeyPrefix === "sk_test_" ? "✅ 맞음" : "❌ 아님");
   
-  // 4) headers 전체 (Authorization 값은 prefix만)
+  // 4) headers 전체 (Authorization 값은 prefix만) - JSON:API 스펙 준수
   const headers = {
     Authorization: `Bearer ${apiKey}`,
-    Accept: "application/json",
-    "Content-Type": "application/json",
+    Accept: "application/vnd.api+json",
+    "Content-Type": "application/vnd.api+json",
   };
   const headersForLog = {
     Authorization: apiKeyExists ? `Bearer ${apiKeyPrefix}...` : "Bearer (missing)",
@@ -41,19 +41,36 @@ export async function createLemonCheckout() {
   console.log("   ", JSON.stringify(headersForLog, null, 2));
   console.log("   - Authorization 헤더 존재:", headers.Authorization ? "✅ 있음" : "❌ 없음");
   console.log("   - Authorization prefix:", apiKeyPrefix);
+  console.log("   - Content-Type:", headers["Content-Type"]);
+  console.log("   - Accept:", headers.Accept);
   
-  // Request body 준비
+  // Request body 준비 - Lemon JSON:API 스펙에 정확히 맞춤
   const storeId = process.env.LEMON_STORE_ID;
   const variantId = process.env.LEMON_VARIANT_ID;
+  
+  // custom_data 준비 (dealId, milestoneId 포함)
+  const customData: Record<string, string> = {};
+  if (dealId) {
+    customData.dealId = dealId;
+  }
+  if (milestoneId) {
+    customData.milestoneId = milestoneId;
+  }
+  
   const requestBody = {
     data: {
       type: "checkouts",
+      attributes: {
+        checkout_data: {
+          custom: customData,
+        },
+      },
       relationships: {
         store: {
-          data: { type: "stores", id: storeId },
+          data: { type: "stores", id: String(storeId) }, // id는 문자열로 전달
         },
         variant: {
-          data: { type: "variants", id: variantId },
+          data: { type: "variants", id: String(variantId) }, // id는 문자열로 전달
         },
       },
     },
@@ -61,6 +78,8 @@ export async function createLemonCheckout() {
   console.log("   - Request Body:", JSON.stringify(requestBody, null, 2));
   console.log("   - store_id:", storeId || "(missing)");
   console.log("   - variant_id:", variantId || "(missing)");
+  console.log("   - dealId:", dealId || "(not provided)");
+  console.log("   - milestoneId:", milestoneId || "(not provided)");
   
   try {
     console.log("5) Fetch 호출 시작...");
