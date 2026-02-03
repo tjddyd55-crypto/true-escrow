@@ -4,9 +4,9 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { dealId: string } }
+  { params }: { params: Promise<{ dealId: string }> }
 ) {
-  const { dealId } = params
+  const { dealId } = await params
   
   try {
     const response = await fetch(`${API_BASE_URL}/api/escrow/payment/${dealId}`)
@@ -22,10 +22,10 @@ export async function GET(
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { dealId: string } }
+  { params }: { params: Promise<{ dealId: string }> }
 ) {
   const userId = request.headers.get('X-User-Id')
-  const { dealId } = params
+  const { dealId } = await params
   
   try {
     const body = await request.json()

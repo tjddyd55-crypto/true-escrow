@@ -4,10 +4,10 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { roomId: string } }
+  { params }: { params: Promise<{ roomId: string }> }
 ) {
   const userId = request.headers.get('X-User-Id')
-  const { roomId } = params
+  const { roomId } = await params
   
   try {
     const response = await fetch(`${API_BASE_URL}/api/escrow/chat/rooms/${roomId}`, {
