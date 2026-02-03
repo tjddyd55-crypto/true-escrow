@@ -34,3 +34,15 @@ pilot:
   country-allowlist: []
   category-allowlist: []
   template-version: v1
+
+# Lemon Squeezy Configuration
+lemon:
+  api:
+    key: ${LEMON_API_KEY:}
+  store:
+    id: ${LEMON_STORE_ID:}
+  checkout:
+    base-url: ${LEMON_CHECKOUT_BASE_URL:https://app.lemonsqueezy.com/checkout/buy}
+  webhook:
+    secret: ${LEMON_WEBHOOK_SECRET:}
+    url: ${LEMON_WEBHOOK_URL:}

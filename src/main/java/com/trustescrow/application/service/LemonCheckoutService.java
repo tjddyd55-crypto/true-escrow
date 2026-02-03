@@ -95,6 +95,39 @@ public class LemonCheckoutService {
     }
     
     /**
+     * Generate Lemon Checkout Link for a deal/milestone.
+     * 
+     * @param dealId Deal ID
+     * @param milestoneId Milestone ID (optional)
+     * @return Lemon Checkout URL
+     */
+    @Transactional
+    public String generateCheckoutLinkForDeal(UUID dealId, UUID milestoneId) {
+        log.info("Generating Lemon checkout link for deal: {}, milestone: {}", dealId, milestoneId);
+        
+        // Get one-time product ID
+        String productId = getOneTimeProductId();
+        
+        // Build checkout URL with dealId and milestoneId in custom data
+        StringBuilder url = new StringBuilder(lemonCheckoutBaseUrl);
+        url.append("/").append(productId);
+        
+        // Add custom data (dealId, milestoneId) for webhook processing
+        url.append("?checkout[custom][dealId]=").append(dealId);
+        if (milestoneId != null) {
+            url.append("&checkout[custom][milestoneId]=").append(milestoneId);
+        }
+        
+        // Add success URL (webhook endpoint)
+        if (lemonWebhookUrl != null && !lemonWebhookUrl.isEmpty()) {
+            url.append("&checkout[redirect_url]=").append(lemonWebhookUrl);
+        }
+        
+        log.info("Lemon checkout link generated for deal: {}", dealId);
+        return url.toString();
+    }
+    
+    /**
      * Build Lemon Checkout URL with custom data.
      */
     private String buildCheckoutUrl(String productId, String variantId, Invoice invoice, Partner partner) {

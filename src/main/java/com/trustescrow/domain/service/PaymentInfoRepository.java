@@ -14,4 +14,9 @@ public interface PaymentInfoRepository extends JpaRepository<PaymentInfo, UUID> 
     List<PaymentInfo> findByBuyerId(UUID buyerId);
     
     List<PaymentInfo> findBySellerId(UUID sellerId);
+    
+    /**
+     * Find payment info by external payment ID (for idempotency check).
+     */
+    Optional<PaymentInfo> findByExternalPaymentId(String externalPaymentId);
 }

@@ -1,9 +1,10 @@
 package com.trustescrow.application.service;
 
-import com.trustescrow.domain.model.Invoice;
-import com.trustescrow.domain.model.Partner;
-import com.trustescrow.domain.service.InvoiceRepository;
-import com.trustescrow.domain.service.PartnerRepository;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.trustescrow.domain.model.*;
+import com.trustescrow.domain.service.*;
+import lombok.Builder;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -16,13 +17,15 @@ import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
 import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
+import java.time.Instant;
 import java.util.Base64;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
  * Lemon Webhook Service for Phase 10.
- * Handles Lemon Squeezy webhook events.
+ * Handles Lemon Squeezy webhook events with idempotency and signature verification.
  * 
  * CRITICAL: Only Lemon webhooks are trusted for payment confirmation.
  * Webhook signature verification is mandatory.
@@ -35,108 +38,268 @@ public class LemonWebhookService {
     @Value("${lemon.webhook.secret:}")
     private String lemonWebhookSecret;
     
-    private final InvoiceRepository invoiceRepository;
-    private final PartnerRepository partnerRepository;
-    private final EntitlementService entitlementService;
+    private final WebhookEventRepository webhookEventRepository;
+    private final DealRepository dealRepository;
+    private final DealMilestoneRepository milestoneRepository;
+    private final PaymentInfoRepository paymentInfoRepository;
+    private final DealStateService dealStateService;
+    private final ObjectMapper objectMapper;
     
     /**
      * Process Lemon webhook event.
      * 
-     * @param signature Webhook signature (HMAC)
-     * @param payload Webhook payload (JSON string)
+     * @param signature Webhook signature (X-Signature header)
+     * @param rawBody Raw request body (for signature verification)
+     * @param payload Parsed JSON payload
      * @return Processing result
      */
     @Transactional
-    public WebhookProcessingResult processWebhook(String signature, String payload) {
+    public WebhookProcessingResult processWebhook(String signature, String rawBody, JsonNode payload) {
         log.info("Processing Lemon webhook event");
         
+        // Extract event metadata
+        String eventName = payload.path("meta").path("event_name").asText();
+        if (eventName == null || eventName.isEmpty()) {
+            eventName = payload.path("meta").path("event_name").asText("unknown");
+        }
+        
+        // Extract event ID (use order/subscription ID as fallback)
+        String eventId;
+        JsonNode data = payload.path("data");
+        if (data.has("id")) {
+            eventId = data.path("id").asText();
+        } else {
+            log.error("No event ID found in webhook payload");
+            return WebhookProcessingResult.builder()
+                .success(false)
+                .message("No event ID in payload")
+                .build();
+        }
+        
+        final String finalEventId = eventId;
+        final String finalEventName = eventName;
+        
+        // Check idempotency: has this event been processed?
+        Optional<WebhookEvent> existingEvent = webhookEventRepository
+            .findByProviderAndEventId("LEMON", finalEventId);
+        
+        if (existingEvent.isPresent() && existingEvent.get().isProcessed()) {
+            log.info("Webhook event already processed: {} (idempotent)", finalEventId);
+            return WebhookProcessingResult.builder()
+                .success(true)
+                .message("Event already processed")
+                .build();
+        }
+        
+        // Save webhook event (for idempotency tracking)
+        WebhookEvent webhookEvent = existingEvent.orElseGet(() -> {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> payloadMap = objectMapper.convertValue(payload, Map.class);
+            return WebhookEvent.builder()
+                .provider("LEMON")
+                .eventId(finalEventId)
+                .eventName(finalEventName)
+                .payload(payloadMap)
+                .createdAt(Instant.now())
+                .build();
+        });
+        
+        if (existingEvent.isEmpty()) {
+            webhookEventRepository.save(webhookEvent);
+        }
+        
         // Verify signature
-        if (!verifySignature(signature, payload)) {
-            log.error("Invalid webhook signature");
+        if (!verifySignature(signature, rawBody)) {
+            log.error("Invalid webhook signature for event: {}", eventId);
             throw new SecurityException("Invalid webhook signature");
         }
         
-        // Parse payload (simplified for Phase 10 MVP)
-        // In production, use proper JSON parsing
-        WebhookPayload webhookPayload = parsePayload(payload);
-        
         // Process based on event type
-        switch (webhookPayload.getEventName()) {
-            case "order_created":
-            case "order_updated":
-                return processPaymentSuccess(webhookPayload);
-            case "subscription_created":
-                return processSubscriptionCreated(webhookPayload);
-            case "subscription_updated":
-                return processSubscriptionUpdated(webhookPayload);
-            case "subscription_cancelled":
-                return processSubscriptionCancelled(webhookPayload);
-            default:
-                log.warn("Unknown webhook event type: {}", webhookPayload.getEventName());
-                return WebhookProcessingResult.builder()
-                    .success(false)
-                    .message("Unknown event type")
+        try {
+            WebhookProcessingResult result;
+            
+            if (eventName.startsWith("order_") && (
+                eventName.equals("order_created") || 
+                eventName.equals("order_updated") ||
+                eventName.equals("order_refunded")
+            )) {
+                result = processOrderEvent(payload, webhookEvent);
+            } else {
+                log.warn("Unhandled webhook event type: {}", eventName);
+                result = WebhookProcessingResult.builder()
+                    .success(true)
+                    .message("Event type not handled")
                     .build();
+            }
+            
+            // Mark event as processed
+            webhookEvent.markAsProcessed();
+            webhookEventRepository.save(webhookEvent);
+            
+            return result;
+        } catch (Exception e) {
+            log.error("Error processing webhook event: {}", eventId, e);
+            throw e;
         }
     }
     
     /**
-     * Process payment success event.
-     * Updates invoice to PAID and grants entitlement.
+     * Process order-related events (paid, refunded, etc.).
      */
-    private WebhookProcessingResult processPaymentSuccess(WebhookPayload payload) {
-        log.info("Processing payment success event");
+    private WebhookProcessingResult processOrderEvent(JsonNode payload, WebhookEvent webhookEvent) {
+        log.info("Processing order event");
         
-        // Extract invoice_id from custom data
-        String invoiceIdStr = payload.getCustomData().get("invoice_id");
-        if (invoiceIdStr == null) {
-            log.error("No invoice_id in webhook custom data");
+        JsonNode data = payload.path("data");
+        JsonNode attributes = data.path("attributes");
+        
+        String orderId = data.path("id").asText();
+        String orderStatus = attributes.path("status").asText();
+        
+        // Only process paid orders
+        if (!"paid".equalsIgnoreCase(orderStatus)) {
+            log.info("Order status is not 'paid', skipping: {}", orderStatus);
+            return WebhookProcessingResult.builder()
+                .success(true)
+                .message("Order not paid, skipping")
+                .build();
+        }
+        
+        // Extract custom data from checkout
+        JsonNode customData = attributes.path("custom_price").path("custom_data");
+        if (customData.isMissingNode()) {
+            // Try alternative path: checkout custom fields
+            JsonNode checkoutData = attributes.path("checkout").path("custom");
+            if (!checkoutData.isMissingNode()) {
+                customData = checkoutData;
+            }
+        }
+        
+        // Extract dealId and milestoneId from custom data
+        String dealIdStr = null;
+        String milestoneIdStr = null;
+        
+        if (!customData.isMissingNode()) {
+            dealIdStr = customData.path("dealId").asText();
+            if (dealIdStr.isEmpty()) {
+                dealIdStr = customData.path("deal_id").asText();
+            }
+            
+            milestoneIdStr = customData.path("milestoneId").asText();
+            if (milestoneIdStr.isEmpty()) {
+                milestoneIdStr = customData.path("milestone_id").asText();
+            }
+        }
+        
+        if (dealIdStr == null || dealIdStr.isEmpty()) {
+            log.error("No dealId in webhook custom data");
             return WebhookProcessingResult.builder()
                 .success(false)
-                .message("No invoice_id in custom data")
+                .message("No dealId in custom data")
                 .build();
         }
         
-        UUID invoiceId = UUID.fromString(invoiceIdStr);
-        
-        // Load invoice
-        Invoice invoice = invoiceRepository.findById(invoiceId)
-            .orElseThrow(() -> new IllegalArgumentException("Invoice not found: " + invoiceId));
-        
-        // Check if already PAID (idempotency)
-        if (invoice.getStatus() == Invoice.InvoiceStatus.PAID) {
-            log.info("Invoice already PAID, skipping (idempotent)");
-            return WebhookProcessingResult.builder()
-                .success(true)
-                .message("Invoice already PAID")
-                .build();
-        }
-        
-        // Check if order_id already processed (idempotency)
-        String orderId = payload.getOrderId();
-        if (orderId != null && invoiceRepository.findByLemonOrderId(orderId).isPresent()) {
-            log.info("Order ID already processed, skipping (idempotent)");
-            return WebhookProcessingResult.builder()
-                .success(true)
-                .message("Order already processed")
-                .build();
-        }
-        
-        // Update invoice to PAID
-        invoice.markAsPaid(java.time.Instant.now(), orderId);
-        invoiceRepository.save(invoice);
-        
-        log.info("Invoice marked as PAID: {}", invoiceId);
-        
-        // Grant entitlement
+        UUID dealId;
         try {
-            entitlementService.grantEntitlementForInvoice(invoiceId);
-            log.info("Entitlement granted for invoice: {}", invoiceId);
-        } catch (Exception e) {
-            log.error("Failed to grant entitlement for invoice: {}", invoiceId, e);
-            // Don't fail the webhook - invoice is already PAID
-            // Entitlement can be granted manually if needed
+            dealId = UUID.fromString(dealIdStr);
+        } catch (IllegalArgumentException e) {
+            log.error("Invalid dealId format: {}", dealIdStr);
+            return WebhookProcessingResult.builder()
+                .success(false)
+                .message("Invalid dealId format")
+                .build();
         }
+        
+        // Load deal
+        Deal deal = dealRepository.findById(dealId)
+            .orElseThrow(() -> new IllegalArgumentException("Deal not found: " + dealId));
+        
+        // Update deal status to FUNDED (payment completed)
+        if (deal.getState() == DealState.CREATED) {
+            try {
+                dealStateService.transitionDeal(dealId, DealState.FUNDED, "system", 
+                    String.format("{\"order_id\":\"%s\",\"webhook_event_id\":\"%s\"}", 
+                        orderId, webhookEvent.getEventId()));
+                log.info("Deal {} transitioned to FUNDED", dealId);
+            } catch (Exception e) {
+                log.error("Failed to transition deal to FUNDED: {}", dealId, e);
+                // Continue processing - deal might already be in a different state
+            }
+        }
+        
+        // Update milestone status to PAID if milestoneId provided
+        if (milestoneIdStr != null && !milestoneIdStr.isEmpty()) {
+            UUID milestoneId;
+            try {
+                milestoneId = UUID.fromString(milestoneIdStr);
+            } catch (IllegalArgumentException e) {
+                log.error("Invalid milestoneId format: {}", milestoneIdStr);
+                milestoneId = null;
+            }
+            
+            if (milestoneId != null) {
+                Optional<DealMilestone> milestoneOpt = milestoneRepository.findById(milestoneId);
+                if (milestoneOpt.isPresent()) {
+                    DealMilestone milestone = milestoneOpt.get();
+                    if (milestone.getDealId().equals(dealId)) {
+                        if (milestone.getStatus() != DealMilestone.MilestoneStatus.COMPLETED) {
+                            milestone.updateStatus(DealMilestone.MilestoneStatus.COMPLETED);
+                            milestoneRepository.save(milestone);
+                            log.info("Milestone {} marked as COMPLETED", milestoneId);
+                        }
+                    } else {
+                        log.warn("Milestone {} does not belong to deal {}", milestoneId, dealId);
+                    }
+                } else {
+                    log.warn("Milestone {} not found", milestoneId);
+                }
+            }
+        }
+        
+        // Upsert payment record (provider_order_id 기준)
+        PaymentInfo paymentInfo = paymentInfoRepository.findByDealId(dealId)
+            .orElseGet(() -> {
+                // Create new payment info if not exists
+                return PaymentInfo.builder()
+                    .dealId(dealId)
+                    .buyerId(deal.getBuyerId())
+                    .sellerId(deal.getSellerId())
+                    .totalAmount(deal.getTotalAmount())
+                    .currency(deal.getCurrency())
+                    .status(PaymentInfo.PaymentStatus.PENDING)
+                    .paymentProvider("LEMON_SQUEEZY")
+                    .externalPaymentId(orderId)
+                    .createdAt(Instant.now())
+                    .updatedAt(Instant.now())
+                    .build();
+            });
+        
+        // Update payment info if exists
+        if (paymentInfo.getExternalPaymentId() == null || !paymentInfo.getExternalPaymentId().equals(orderId)) {
+            // Use reflection or builder pattern to update immutable fields
+            // For now, create a new instance with updated values
+            PaymentInfo updatedPaymentInfo = PaymentInfo.builder()
+                .id(paymentInfo.getId())
+                .dealId(paymentInfo.getDealId())
+                .buyerId(paymentInfo.getBuyerId())
+                .sellerId(paymentInfo.getSellerId())
+                .totalAmount(paymentInfo.getTotalAmount())
+                .currency(paymentInfo.getCurrency())
+                .status(PaymentInfo.PaymentStatus.PAID)
+                .paymentProvider("LEMON_SQUEEZY")
+                .externalPaymentId(orderId)
+                .createdAt(paymentInfo.getCreatedAt())
+                .updatedAt(Instant.now())
+                .paidAt(Instant.now())
+                .build();
+            
+            paymentInfoRepository.save(updatedPaymentInfo);
+        } else {
+            // Just update status if order ID already matches
+            paymentInfo.updateStatus(PaymentInfo.PaymentStatus.PAID);
+            paymentInfoRepository.save(paymentInfo);
+        }
+        
+        log.info("Payment info updated for deal {} with order ID {}", dealId, orderId);
         
         return WebhookProcessingResult.builder()
             .success(true)
@@ -145,96 +308,49 @@ public class LemonWebhookService {
     }
     
     /**
-     * Process subscription created event.
-     */
-    private WebhookProcessingResult processSubscriptionCreated(WebhookPayload payload) {
-        log.info("Processing subscription created event");
-        // TODO: Implement subscription handling
-        return WebhookProcessingResult.builder()
-            .success(true)
-            .message("Subscription created (not implemented)")
-            .build();
-    }
-    
-    /**
-     * Process subscription updated event.
-     */
-    private WebhookProcessingResult processSubscriptionUpdated(WebhookPayload payload) {
-        log.info("Processing subscription updated event");
-        // TODO: Implement subscription update handling
-        return WebhookProcessingResult.builder()
-            .success(true)
-            .message("Subscription updated (not implemented)")
-            .build();
-    }
-    
-    /**
-     * Process subscription cancelled event.
-     */
-    private WebhookProcessingResult processSubscriptionCancelled(WebhookPayload payload) {
-        log.info("Processing subscription cancelled event");
-        // TODO: Implement subscription cancellation handling
-        return WebhookProcessingResult.builder()
-            .success(true)
-            .message("Subscription cancelled (not implemented)")
-            .build();
-    }
-    
-    /**
-     * Verify webhook signature using HMAC.
+     * Verify webhook signature using HMAC-SHA256.
      */
     private boolean verifySignature(String signature, String payload) {
         if (lemonWebhookSecret == null || lemonWebhookSecret.isEmpty()) {
             log.warn("Lemon webhook secret not configured, skipping signature verification");
-            return true; // For development only
+            return true; // For development only - should fail in production
+        }
+        
+        if (signature == null || signature.isEmpty()) {
+            log.error("Webhook signature is missing");
+            return false;
         }
         
         try {
             Mac mac = Mac.getInstance("HmacSHA256");
-            SecretKeySpec secretKey = new SecretKeySpec(lemonWebhookSecret.getBytes(StandardCharsets.UTF_8), "HmacSHA256");
+            SecretKeySpec secretKey = new SecretKeySpec(
+                lemonWebhookSecret.getBytes(StandardCharsets.UTF_8), 
+                "HmacSHA256"
+            );
             mac.init(secretKey);
             byte[] hashBytes = mac.doFinal(payload.getBytes(StandardCharsets.UTF_8));
             String computedSignature = Base64.getEncoder().encodeToString(hashBytes);
             
-            return signature.equals(computedSignature);
+            // Lemon sends signature in format: "signature=<base64>"
+            String cleanSignature = signature;
+            if (signature.startsWith("signature=")) {
+                cleanSignature = signature.substring("signature=".length());
+            }
+            
+            boolean isValid = cleanSignature.equals(computedSignature);
+            if (!isValid) {
+                log.error("Signature mismatch. Expected: {}, Got: {}", computedSignature, cleanSignature);
+            }
+            
+            return isValid;
         } catch (NoSuchAlgorithmException | InvalidKeyException e) {
             log.error("Failed to verify webhook signature", e);
             return false;
         }
     }
     
-    /**
-     * Parse webhook payload (simplified for Phase 10 MVP).
-     * In production, use proper JSON parsing library.
-     */
-    private WebhookPayload parsePayload(String payload) {
-        // Phase 10 MVP: Simplified parsing
-        // In production, use Jackson or Gson
-        WebhookPayload webhookPayload = new WebhookPayload();
-        
-        // Extract event name (simplified)
-        if (payload.contains("\"event_name\"")) {
-            // Parse JSON (simplified)
-            // In production, use proper JSON library
-        }
-        
-        // For Phase 10 MVP, return placeholder
-        webhookPayload.setEventName("order_created");
-        webhookPayload.setOrderId("order_123"); // Extract from payload
-        webhookPayload.setCustomData(Map.of("invoice_id", "invoice-uuid")); // Extract from payload
-        
-        return webhookPayload;
-    }
-    
     @Data
-    public static class WebhookPayload {
-        private String eventName;
-        private String orderId;
-        private Map<String, String> customData;
-    }
-    
-    @lombok.Data
-    @lombok.Builder
+    @Builder
     public static class WebhookProcessingResult {
         private boolean success;
         private String message;
