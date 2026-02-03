@@ -87,6 +87,47 @@ export default function DealDetail() {
     }
   }
 
+  // STEP 4: Release 요청 함수
+  async function requestRelease(dealId: string, milestoneId: string) {
+    if (loading) return;
+    
+    setLoading(true);
+    setError(null);
+    
+    try {
+      const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080";
+      const res = await fetch(`${apiBaseUrl}/api/deals/${dealId}/milestones/${milestoneId}/release-request`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          reason: "Milestone completed",
+        }),
+      });
+      
+      const data = await res.json();
+      
+      if (!res.ok || data.error) {
+        throw new Error(data.error || "Failed to request release");
+      }
+      
+      alert(`Release request submitted: ${data.message}`);
+      
+      // Refresh deal data
+      const dealRes = await fetch(`/api/deals/${dealId}`);
+      if (dealRes.ok) {
+        const dealData = await dealRes.json();
+        setDeal(dealData);
+      }
+    } catch (err: any) {
+      setError(`Release request failed: ${err.message}`);
+      alert(`Error: ${err.message}`);
+    } finally {
+      setLoading(false);
+    }
+  }
+
   if (error) {
     return (
       <main style={{ padding: 40 }}>
@@ -158,10 +199,13 @@ export default function DealDetail() {
 
       {deal.milestones?.map((m: any) => {
         // STEP 4: Status text mapping (STEP 2: Updated for new states)
+        // STEP 4: Updated status mapping with RELEASE_REQUESTED
         const statusText = m.status === "PENDING" 
           ? "결제 대기" 
           : m.status === "PAID_HELD" || m.status === "FUNDED"  // FUNDED for backward compatibility
           ? "에스크로 보류 중" 
+          : m.status === "RELEASE_REQUESTED"
+          ? "Release 요청됨"
           : m.status === "RELEASED"
           ? "지급 완료"
           : m.status === "REFUNDED"
@@ -172,6 +216,8 @@ export default function DealDetail() {
           ? "#f39c12" 
           : m.status === "PAID_HELD" || m.status === "FUNDED"  // FUNDED for backward compatibility
           ? "#00b894" 
+          : m.status === "RELEASE_REQUESTED"
+          ? "#e67e22"
           : m.status === "RELEASED"
           ? "#0984e3"
           : m.status === "REFUNDED"
