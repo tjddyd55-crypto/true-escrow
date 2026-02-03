@@ -292,7 +292,44 @@ export default function DealDetail() {
                   ✅ 이 금액은 에스크로에 보관 중입니다
                 </p>
                 <p style={{ margin: "4px 0 0 0" }}>
-                  Funds are held in escrow. Waiting for admin release.
+                  Funds are held in escrow. You can request release when milestone is completed.
+                </p>
+                <button
+                  onClick={() => requestRelease(params.id as string, m.id)}
+                  disabled={loading}
+                  style={{
+                    marginTop: 8,
+                    padding: "8px 16px",
+                    backgroundColor: loading ? "#b2bec3" : "#e67e22",
+                    color: "white",
+                    border: "none",
+                    borderRadius: 4,
+                    cursor: loading ? "not-allowed" : "pointer",
+                    fontSize: 12,
+                    fontWeight: "bold",
+                  }}
+                >
+                  {loading ? "요청 중..." : "Release 요청"}
+                </button>
+              </div>
+            )}
+
+            {m.status === "RELEASE_REQUESTED" && (
+              <div style={{ 
+                fontSize: 12, 
+                color: "#e67e22", 
+                marginTop: 12, 
+                marginBottom: 8,
+                padding: 8,
+                backgroundColor: "#fff4e6",
+                border: "1px solid #e67e22",
+                borderRadius: 4
+              }}>
+                <p style={{ margin: 0, fontWeight: "bold" }}>
+                  ⏳ Release 요청이 제출되었습니다
+                </p>
+                <p style={{ margin: "4px 0 0 0" }}>
+                  Release request submitted. Waiting for admin approval.
                 </p>
               </div>
             )}
