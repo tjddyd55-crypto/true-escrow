@@ -31,6 +31,7 @@ public class BlockchainService {
     
     private final OnChainRecordRepository onChainRecordRepository;
     private final DealMilestoneRepository milestoneRepository;
+    private final BlockchainContractService contractService;
     
     /**
      * STEP 7-2: Record milestone state change on blockchain.
@@ -77,24 +78,49 @@ public class BlockchainService {
             
             onChainRecordRepository.save(record);
             
-            // TODO: Trigger actual blockchain transaction via adapter
-            // For now, just log the intent
-            log.info("[BLOCKCHAIN] On-chain record created: recordId={}, status={}", 
-                record.getId(), status);
-            log.info("[BLOCKCHAIN] TODO: Trigger blockchain transaction via adapter");
+            // STEP 7-B: Trigger actual blockchain transaction
+            int contractStatus = mapToContractStatus(status);
+            Optional<String> txHashOpt = contractService.recordStatus(
+                dealId.toString(),
+                milestoneId.toString(),
+                contractStatus
+            );
             
-            // In production, this would:
-            // 1. Call blockchain adapter to create transaction
-            // 2. Get transaction hash
-            // 3. Update record with transaction hash
-            // 4. Poll for confirmation
-            // 5. Mark record as confirmed
+            if (txHashOpt.isPresent()) {
+                String txHash = txHashOpt.get();
+                record.setTransactionHash(txHash);
+                record.setNetwork("sepolia"); // TODO: Get from config
+                onChainRecordRepository.save(record);
+                log.info("[BLOCKCHAIN] On-chain transaction sent: recordId={}, txHash={}, status={}", 
+                    record.getId(), txHash, status);
+                
+                // TODO: Poll for confirmation in background
+                // For now, transaction is sent but not confirmed
+            } else {
+                log.warn("[BLOCKCHAIN] Failed to send on-chain transaction: recordId={}, status={}", 
+                    record.getId(), status);
+            }
             
         } catch (Exception e) {
             log.error("[BLOCKCHAIN] Error recording milestone status: dealId={}, milestoneId={}, error={}", 
                 dealId, milestoneId, e.getMessage(), e);
             // Don't throw - blockchain recording failure shouldn't block business logic
         }
+    }
+    
+    /**
+     * Map OnChainRecord.RecordStatus to contract status (0, 1, 2).
+     */
+    private int mapToContractStatus(OnChainRecord.RecordStatus status) {
+        return switch (status) {
+            case FUNDS_HELD -> 0;
+            case RELEASED -> 1;
+            case REFUNDED -> 2;
+            default -> {
+                log.warn("[BLOCKCHAIN] Unknown status: {}, defaulting to FUNDS_HELD", status);
+                yield 0;
+            }
+        };
     }
     
     /**

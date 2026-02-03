@@ -34,6 +34,7 @@ public class MilestoneReleaseController {
     private final DealMilestoneRepository milestoneRepository;
     private final EscrowStateService escrowStateService;
     private final com.trustescrow.domain.service.AuditEventRepository auditEventRepository;
+    private final com.trustescrow.application.service.BlockchainService blockchainService;
     
     /**
      * STEP 4: Approve release of milestone funds from escrow (ADMIN ONLY).
@@ -129,13 +130,18 @@ public class MilestoneReleaseController {
             log.info("[AUDIT] Release approved logged: dealId={}, milestoneId={}, actor={}, before={}, after=RELEASED", 
                 dealId, milestoneId, actor, beforeStatus);
             
-            // STEP 7: Record on-chain
+            // STEP 7-B: Record on-chain (RELEASED)
             try {
-                com.trustescrow.application.service.BlockchainService blockchainService = null; // TODO: Inject
-                // blockchainService.recordMilestoneStatus(dealId, milestoneId, 
-                //     com.trustescrow.domain.model.OnChainRecord.RecordStatus.RELEASED, "ADMIN");
+                blockchainService.recordMilestoneStatus(
+                    dealId,
+                    milestoneId,
+                    com.trustescrow.domain.model.OnChainRecord.RecordStatus.RELEASED,
+                    "ADMIN"
+                );
+                log.info("[BLOCKCHAIN] RELEASED recorded on-chain: dealId={}, milestoneId={}", 
+                    dealId, milestoneId);
             } catch (Exception e) {
-                log.warn("[BLOCKCHAIN] Failed to record on-chain (non-critical): {}", e.getMessage());
+                log.warn("[BLOCKCHAIN] Failed to record RELEASED on-chain (non-critical): {}", e.getMessage());
             }
             
             // STEP 4: Update deal status accordingly

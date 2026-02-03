@@ -46,3 +46,11 @@ lemon:
   webhook:
     secret: ${LEMON_WEBHOOK_SECRET:}
     url: ${LEMON_WEBHOOK_URL:}
+
+# Blockchain Configuration (STEP 7-B)
+blockchain:
+  enabled: ${BLOCKCHAIN_ENABLED:false}
+  rpc-url: ${BLOCKCHAIN_RPC_URL:https://sepolia.infura.io/v3/YOUR_INFURA_KEY}
+  contract-address: ${ESCROW_CONTRACT_ADDRESS:}
+  private-key: ${BLOCKCHAIN_PRIVATE_KEY:}
+  network: ${BLOCKCHAIN_NETWORK:sepolia}

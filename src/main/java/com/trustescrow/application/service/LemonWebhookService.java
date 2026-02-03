@@ -326,7 +326,7 @@ public class LemonWebhookService {
                 log.info("[ESCROW] In-memory state updated: deal={} milestone={} → FUNDS_HELD", 
                     parsed.dealId, parsed.milestoneId);
             
-            // STEP 7: Record on-chain (if milestone is UUID format)
+            // STEP 7-B: Record on-chain (FUNDS_HELD)
             if (milestoneUuid != null && dealUuid != null) {
                 try {
                     blockchainService.recordMilestoneStatus(
@@ -335,8 +335,10 @@ public class LemonWebhookService {
                         com.trustescrow.domain.model.OnChainRecord.RecordStatus.FUNDS_HELD,
                         "SYSTEM"
                     );
+                    log.info("[BLOCKCHAIN] FUNDS_HELD recorded on-chain: dealId={}, milestoneId={}", 
+                        dealUuid, milestoneUuid);
                 } catch (Exception e) {
-                    log.warn("[BLOCKCHAIN] Failed to record on-chain (non-critical): {}", e.getMessage());
+                    log.warn("[BLOCKCHAIN] Failed to record FUNDS_HELD on-chain (non-critical): {}", e.getMessage());
                 }
             }
             } else {
@@ -408,6 +410,22 @@ public class LemonWebhookService {
         escrowStateService.setMilestoneRefunded(parsed.dealId, parsed.milestoneId);
         log.info("[ESCROW] In-memory state updated: deal={} milestone={} → REFUNDED", 
             parsed.dealId, parsed.milestoneId);
+        
+        // STEP 7-B: Record on-chain (REFUNDED)
+        if (dealUuid != null && milestoneUuid != null) {
+            try {
+                blockchainService.recordMilestoneStatus(
+                    dealUuid,
+                    milestoneUuid,
+                    com.trustescrow.domain.model.OnChainRecord.RecordStatus.REFUNDED,
+                    "SYSTEM"
+                );
+                log.info("[BLOCKCHAIN] REFUNDED recorded on-chain: dealId={}, milestoneId={}", 
+                    dealUuid, milestoneUuid);
+            } catch (Exception e) {
+                log.warn("[BLOCKCHAIN] Failed to record REFUNDED on-chain (non-critical): {}", e.getMessage());
+            }
+        }
     }
     
     /**

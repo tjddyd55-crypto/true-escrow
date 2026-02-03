@@ -34,6 +34,7 @@ public class AdminDisputeController {
     private final DealMilestoneRepository milestoneRepository;
     private final AuditEventRepository auditEventRepository;
     private final EscrowStateService escrowStateService;
+    private final com.trustescrow.application.service.BlockchainService blockchainService;
     
     /**
      * STEP 6-3: Resolve dispute (ADMIN ONLY).
@@ -127,6 +128,31 @@ public class AdminDisputeController {
             }
             
             milestoneRepository.save(milestone);
+            
+            // STEP 7-B: Record on-chain based on resolution
+            try {
+                if (resolution == MilestoneDispute.DisputeResolution.RELEASE) {
+                    blockchainService.recordMilestoneStatus(
+                        dispute.getDealId(),
+                        dispute.getMilestoneId(),
+                        com.trustescrow.domain.model.OnChainRecord.RecordStatus.RELEASED,
+                        "ADMIN"
+                    );
+                    log.info("[BLOCKCHAIN] RELEASED recorded on-chain (dispute resolution): dealId={}, milestoneId={}", 
+                        dispute.getDealId(), dispute.getMilestoneId());
+                } else {
+                    blockchainService.recordMilestoneStatus(
+                        dispute.getDealId(),
+                        dispute.getMilestoneId(),
+                        com.trustescrow.domain.model.OnChainRecord.RecordStatus.REFUNDED,
+                        "ADMIN"
+                    );
+                    log.info("[BLOCKCHAIN] REFUNDED recorded on-chain (dispute resolution): dealId={}, milestoneId={}", 
+                        dispute.getDealId(), dispute.getMilestoneId());
+                }
+            } catch (Exception e) {
+                log.warn("[BLOCKCHAIN] Failed to record on-chain (non-critical): {}", e.getMessage());
+            }
             
             // STEP 6: Record audit log
             String actor = userId != null ? userId.toString() : "admin";
