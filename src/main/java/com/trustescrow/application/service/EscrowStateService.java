@@ -211,13 +211,43 @@ public class EscrowStateService {
                     return new MilestoneState("DISPUTED");
                 } else {
                     String currentStatus = existing.getStatus();
-                    if ("PAID_HELD".equals(currentStatus) || "RELEASE_REQUESTED".equals(currentStatus)) {
+                    // MASTER TASK: FUNDS_HELD, EVIDENCE_SUBMITTED, or RELEASE_REQUESTED can be disputed
+                    if ("FUNDS_HELD".equals(currentStatus) || "PAID_HELD".equals(currentStatus) ||
+                        "EVIDENCE_SUBMITTED".equals(currentStatus) || "RELEASE_REQUESTED".equals(currentStatus)) {
                         log.info("[ESCROW] Milestone {} for deal {} transitioned from {} to DISPUTED", 
                             milestoneId, dealId, currentStatus);
                         existing.setStatus("DISPUTED");
                         return existing;
                     } else {
                         log.warn("[ESCROW] Milestone {} for deal {} is in state {}, cannot dispute", 
+                            milestoneId, dealId, currentStatus);
+                        return existing;
+                    }
+                }
+            });
+    }
+    
+    /**
+     * MASTER TASK: Set milestone status to EVIDENCE_SUBMITTED.
+     * Only transitions from FUNDS_HELD/PAID_HELD to EVIDENCE_SUBMITTED.
+     */
+    public void setMilestoneEvidenceSubmitted(String dealId, String milestoneId) {
+        log.info("[ESCROW] Evidence submitted: dealId={}, milestoneId={}", dealId, milestoneId);
+        
+        STATE_STORAGE.computeIfAbsent(dealId, k -> new ConcurrentHashMap<>())
+            .compute(milestoneId, (key, existing) -> {
+                if (existing == null) {
+                    log.warn("[ESCROW] Milestone {} for deal {} not found, creating EVIDENCE_SUBMITTED", milestoneId, dealId);
+                    return new MilestoneState("EVIDENCE_SUBMITTED");
+                } else {
+                    String currentStatus = existing.getStatus();
+                    if ("FUNDS_HELD".equals(currentStatus) || "PAID_HELD".equals(currentStatus)) {
+                        log.info("[ESCROW] Milestone {} for deal {} transitioned from {} to EVIDENCE_SUBMITTED", 
+                            milestoneId, dealId, currentStatus);
+                        existing.setStatus("EVIDENCE_SUBMITTED");
+                        return existing;
+                    } else {
+                        log.warn("[ESCROW] Milestone {} for deal {} is in state {}, cannot submit evidence", 
                             milestoneId, dealId, currentStatus);
                         return existing;
                     }

@@ -79,13 +79,13 @@ public class MilestoneReleaseRequestController {
             
             DealMilestone milestone = milestoneOpt.get();
             
-            // STEP 4: Validate milestone status = PAID_HELD
-            if (milestone.getStatus() != DealMilestone.MilestoneStatus.PAID_HELD) {
-                log.warn("[RELEASE_REQUEST] Milestone {} is in status {}, cannot request release. Only PAID_HELD can be requested.", 
+            // MASTER TASK: Validate milestone status = EVIDENCE_SUBMITTED
+            if (milestone.getStatus() != DealMilestone.MilestoneStatus.EVIDENCE_SUBMITTED) {
+                log.warn("[RELEASE_REQUEST] Milestone {} is in status {}, cannot request release. Only EVIDENCE_SUBMITTED can be requested.", 
                     milestoneId, milestone.getStatus());
                 return ResponseEntity.badRequest()
                     .body(new ErrorResponse(
-                        String.format("Milestone must be in PAID_HELD status to request release. Current status: %s", 
+                        String.format("Milestone must be in EVIDENCE_SUBMITTED status to request release. Current status: %s. Please upload evidence first.", 
                             milestone.getStatus())));
             }
             
@@ -98,12 +98,13 @@ public class MilestoneReleaseRequestController {
             // Update in-memory state
             escrowStateService.setMilestoneReleaseRequested(dealId.toString(), milestoneId.toString());
             
-            // STEP 4: Record audit log
+            // MASTER TASK STEP 6: Record audit log with before/after status
             String actor = userId != null ? userId.toString() : "anonymous";
             String reason = requestDto != null && requestDto.reason() != null ? requestDto.reason() : "Release requested";
+            String beforeStatus = milestone.getStatus().name();
             String payload = String.format(
-                "{\"milestoneId\":\"%s\",\"reason\":\"%s\",\"fromStatus\":\"%s\",\"toStatus\":\"RELEASE_REQUESTED\"}",
-                milestoneId, reason, milestone.getStatus()
+                "{\"action\":\"RELEASE_REQUESTED\",\"milestoneId\":\"%s\",\"reason\":\"%s\",\"before\":\"%s\",\"after\":\"RELEASE_REQUESTED\"}",
+                milestoneId, reason, beforeStatus
             );
             
             AuditEvent auditEvent = AuditEvent.builder()
@@ -115,6 +116,8 @@ public class MilestoneReleaseRequestController {
                 .build();
             
             auditEventRepository.save(auditEvent);
+            log.info("[AUDIT] Release request logged: dealId={}, milestoneId={}, actor={}, before={}, after=RELEASE_REQUESTED", 
+                dealId, milestoneId, actor, beforeStatus);
             
             log.info("[RELEASE_REQUEST] Release request submitted successfully: dealId={}, milestoneId={}, actor={}", 
                 dealId, milestoneId, actor);

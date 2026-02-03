@@ -53,47 +53,51 @@ public class DealMilestone {
     private Instant completedAt;
     
     /**
-     * STEP 6: Milestone status for escrow flow with approval and dispute system.
+     * MASTER TASK: Milestone status for escrow flow with evidence and approval system.
+     * 
+     * Core states:
      * - PENDING: Initial state, payment not yet made
-     * - PAID_HELD: Payment received, funds held in escrow
+     * - FUNDS_HELD: Payment completed, funds held in escrow (alias: PAID_HELD)
+     * - EVIDENCE_SUBMITTED: Evidence uploaded, milestone completion proof provided
      * - RELEASE_REQUESTED: Release request submitted (awaiting admin approval)
      * - RELEASED: Funds released to seller (admin approved)
+     * - DISPUTED: Dispute raised
      * - REFUNDED: Payment refunded to buyer
-     * - DISPUTED: Dispute raised (STEP 6)
-     * - DISPUTE_REVIEWING: Admin reviewing dispute (STEP 6)
-     * - DISPUTE_RESOLVED_RELEASE: Dispute resolved - release funds (STEP 6)
-     * - DISPUTE_RESOLVED_REFUND: Dispute resolved - refund funds (STEP 6)
      * 
-     * State transitions (strict):
-     * - PENDING → PAID_HELD (via webhook)
-     * - PAID_HELD → RELEASE_REQUESTED (via release request API)
-     * - PAID_HELD → DISPUTED (via dispute API) - STEP 6
-     * - RELEASE_REQUESTED → DISPUTED (via dispute API) - STEP 6
-     * - RELEASE_REQUESTED → RELEASED (via admin approval API)
-     * - DISPUTED → DISPUTE_REVIEWING (automatic when admin starts review)
-     * - DISPUTE_REVIEWING → DISPUTE_RESOLVED_RELEASE (via admin resolve API)
-     * - DISPUTE_REVIEWING → DISPUTE_RESOLVED_REFUND (via admin resolve API)
+     * State transitions (strict - no skipping):
+     * - PENDING → FUNDS_HELD (via webhook/payment)
+     * - FUNDS_HELD → EVIDENCE_SUBMITTED (via evidence upload)
+     * - EVIDENCE_SUBMITTED → RELEASE_REQUESTED (via release request)
+     * - RELEASE_REQUESTED → RELEASED (via admin approval)
+     * - FUNDS_HELD / EVIDENCE_SUBMITTED / RELEASE_REQUESTED → DISPUTED (via dispute)
+     * - DISPUTED → RELEASED or REFUNDED (via admin resolution)
      * 
      * Reverse transitions are NOT allowed:
-     * - RELEASED → PAID_HELD ❌
+     * - RELEASED → FUNDS_HELD ❌
      * - REFUNDED → RELEASED ❌
-     * - DISPUTE_RESOLVED_* → DISPUTED ❌
+     * - EVIDENCE_SUBMITTED → FUNDS_HELD ❌
      * 
-     * Legacy statuses (for backward compatibility):
-     * - IN_PROGRESS: Work in progress
+     * Legacy/alias statuses (for backward compatibility):
+     * - PAID_HELD: Alias for FUNDS_HELD
+     * - DISPUTE_REVIEWING: Admin reviewing dispute (internal state)
+     * - DISPUTE_RESOLVED_RELEASE: Dispute resolved - release (internal state)
+     * - DISPUTE_RESOLVED_REFUND: Dispute resolved - refund (internal state)
+     * - IN_PROGRESS: Work in progress (legacy)
      * - COMPLETED: Work completed (legacy)
      * - REJECTED: Work rejected (legacy)
      */
     public enum MilestoneStatus {
-        PENDING,
-        PAID_HELD,                  // STEP 2: Payment received, funds held
-        RELEASE_REQUESTED,          // STEP 4: Release request submitted
-        RELEASED,                   // STEP 4: Funds released (admin approved)
-        REFUNDED,                   // STEP 2: Payment refunded
-        DISPUTED,                   // STEP 6: Dispute raised
-        DISPUTE_REVIEWING,          // STEP 6: Admin reviewing dispute
-        DISPUTE_RESOLVED_RELEASE,   // STEP 6: Dispute resolved - release
-        DISPUTE_RESOLVED_REFUND,    // STEP 6: Dispute resolved - refund
+        PENDING,                    // Initial state
+        FUNDS_HELD,                 // MASTER: Payment completed, funds held
+        PAID_HELD,                  // Alias for FUNDS_HELD (backward compatibility)
+        EVIDENCE_SUBMITTED,         // MASTER: Evidence uploaded
+        RELEASE_REQUESTED,          // Release request submitted
+        RELEASED,                   // Funds released (admin approved)
+        DISPUTED,                   // Dispute raised
+        REFUNDED,                   // Payment refunded
+        DISPUTE_REVIEWING,          // Admin reviewing dispute (internal)
+        DISPUTE_RESOLVED_RELEASE,   // Dispute resolved - release (internal)
+        DISPUTE_RESOLVED_REFUND,    // Dispute resolved - refund (internal)
         IN_PROGRESS,                // Legacy
         COMPLETED,                  // Legacy
         REJECTED                    // Legacy

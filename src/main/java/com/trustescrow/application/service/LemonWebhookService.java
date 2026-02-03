@@ -321,10 +321,10 @@ public class LemonWebhookService {
                     }
                 }
                 
-            // Update in-memory state (for demo deals with string IDs)
-            escrowStateService.setMilestonePaidHeld(parsed.dealId, parsed.milestoneId);
-            log.info("[ESCROW] In-memory state updated: deal={} milestone={} → PAID_HELD", 
-                parsed.dealId, parsed.milestoneId);
+                // Update in-memory state (for demo deals with string IDs)
+                escrowStateService.setMilestonePaidHeld(parsed.dealId, parsed.milestoneId); // Uses FUNDS_HELD internally
+                log.info("[ESCROW] In-memory state updated: deal={} milestone={} → FUNDS_HELD", 
+                    parsed.dealId, parsed.milestoneId);
             
             // STEP 7: Record on-chain (if milestone is UUID format)
             if (milestoneUuid != null && dealUuid != null) {

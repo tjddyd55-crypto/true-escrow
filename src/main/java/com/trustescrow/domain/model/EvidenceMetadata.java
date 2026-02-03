@@ -22,6 +22,9 @@ public class EvidenceMetadata {
     private UUID dealId;
     
     @Column(nullable = false)
+    private UUID milestoneId; // MASTER TASK: Evidence is milestone-specific
+    
+    @Column(nullable = false)
     private UUID uploadedBy;
     
     @Column(nullable = false)

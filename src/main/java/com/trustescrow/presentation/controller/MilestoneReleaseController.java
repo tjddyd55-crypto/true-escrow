@@ -109,11 +109,12 @@ public class MilestoneReleaseController {
             // Update in-memory state
             escrowStateService.setMilestoneReleased(dealId.toString(), milestoneId.toString());
             
-            // STEP 4: Record audit log
+            // MASTER TASK STEP 6: Record audit log with before/after status
             String actor = userId != null ? userId.toString() : "admin";
+            String beforeStatus = milestone.getStatus().name();
             String payload = String.format(
-                "{\"milestoneId\":\"%s\",\"action\":\"RELEASE_APPROVED\",\"fromStatus\":\"RELEASE_REQUESTED\",\"toStatus\":\"RELEASED\"}",
-                milestoneId
+                "{\"action\":\"RELEASE_APPROVED\",\"milestoneId\":\"%s\",\"before\":\"%s\",\"after\":\"RELEASED\",\"decidedBy\":\"ADMIN\"}",
+                milestoneId, beforeStatus
             );
             
             com.trustescrow.domain.model.AuditEvent auditEvent = com.trustescrow.domain.model.AuditEvent.builder()
@@ -125,8 +126,8 @@ public class MilestoneReleaseController {
                 .build();
             
             auditEventRepository.save(auditEvent);
-            log.info("[RELEASE_APPROVAL] Audit log recorded: dealId={}, milestoneId={}, actor={}", 
-                dealId, milestoneId, actor);
+            log.info("[AUDIT] Release approved logged: dealId={}, milestoneId={}, actor={}, before={}, after=RELEASED", 
+                dealId, milestoneId, actor, beforeStatus);
             
             // STEP 7: Record on-chain
             try {
