@@ -28,11 +28,11 @@ public class RulesEngine {
         List<AuditEventDescription> auditEvents = new ArrayList<>();
         DealState nextState = null;
         
-        DealState currentState = context.getDealState();
-        ContractTemplateData template = context.getTemplate();
-        boolean autoApproveElapsed = context.isAutoApproveElapsed();
-        boolean disputeTTLElapsed = context.isDisputeTTLElapsed();
-        DisputeCaseData dispute = context.getDispute();
+        DealState currentState = context.dealState;
+        ContractTemplateData template = context.template;
+        boolean autoApproveElapsed = context.autoApproveElapsed;
+        boolean disputeTTLElapsed = context.disputeTTLElapsed;
+        DisputeCaseData dispute = context.dispute;
         
         // State-specific rule evaluation
         if (currentState == DealState.INSPECTION) {
@@ -40,7 +40,7 @@ public class RulesEngine {
                 nextState = DealState.APPROVED;
                 actions.add(EscrowAction.builder()
                     .type(EscrowActionType.RELEASE)
-                    .amount(context.getHoldbackAmount())
+                    .amount(context.holdbackAmount)
                     .fromAccount("escrow")
                     .toAccount("seller")
                     .build());
@@ -51,10 +51,10 @@ public class RulesEngine {
             }
         } else if (currentState == DealState.APPROVED) {
             // Release holdback if not already released
-            if (context.isHoldbackUnreleased()) {
+            if (context.holdbackUnreleased) {
                 actions.add(EscrowAction.builder()
                     .type(EscrowActionType.RELEASE)
-                    .amount(context.getHoldbackAmount())
+                    .amount(context.holdbackAmount)
                     .fromAccount("escrow")
                     .toAccount("seller")
                     .build());
@@ -67,7 +67,7 @@ public class RulesEngine {
         } else if (currentState == DealState.ISSUE) {
             if (disputeTTLElapsed && dispute != null) {
                 // Apply default resolution from template
-                String defaultResolution = template.getDefaultResolutionOnDisputeTTL();
+                String defaultResolution = template.defaultResolutionOnDisputeTTL;
                 nextState = DealState.SETTLED;
                 
                 if ("releaseHoldbackMinusMinorCap".equals(defaultResolution)) {
@@ -78,11 +78,11 @@ public class RulesEngine {
                             .amount(offsetAmount)
                             .fromAccount("escrow")
                             .toAccount("buyer")
-                            .referenceId(dispute.getId())
+                            .referenceId(dispute.id)
                             .build());
                     }
                     
-                    BigDecimal remaining = context.getHoldbackAmount().subtract(offsetAmount);
+                    BigDecimal remaining = context.holdbackAmount.subtract(offsetAmount);
                     if (remaining.compareTo(BigDecimal.ZERO) > 0) {
                         actions.add(EscrowAction.builder()
                             .type(EscrowActionType.RELEASE)
@@ -114,11 +114,11 @@ public class RulesEngine {
         ContractTemplateData template
     ) {
         // Calculate offset based on reason code and template policy
-        IssueReasonCode reasonCode = dispute.getReasonCode();
-        BigDecimal holdbackAmount = context.getHoldbackAmount();
+        IssueReasonCode reasonCode = dispute.reasonCode;
+        BigDecimal holdbackAmount = context.holdbackAmount;
         
         // Get cap from template if available
-        BigDecimal cap = template.getOffsetCapsByReasonCode().getOrDefault(reasonCode, holdbackAmount);
+        BigDecimal cap = template.offsetCapsByReasonCode.getOrDefault(reasonCode, holdbackAmount);
         
         // Return minimum of cap and holdback
         return cap.min(holdbackAmount);

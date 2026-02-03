@@ -121,13 +121,11 @@ export async function createLemonCheckout(dealId?: string, milestoneId?: string)
       if (res.status === 401) {
         console.error(`[${requestId}] 401 Unauthenticated 원인 분석:`);
         
-        // C1) API Key 모드 불일치 체크
-        console.error(`[${requestId}] C1) API Key 모드 체크:`);
-        console.error(`[${requestId}]    - Key prefix:`, apiKeyPrefix);
-        console.error(`[${requestId}]    - Key mode:`, keyMode);
-        console.error(`[${requestId}]    - Test mode 사용 중인가?`, keyMode === "test" ? "✅ 예" : "❌ 아니오");
-        console.error(`[${requestId}]    - Live mode 사용 중인가?`, keyMode === "live" ? "✅ 예" : "❌ 아니오");
-        console.error(`[${requestId}]    - ⚠️ Lemon Dashboard에서 Test mode ON/OFF와 API key 모드가 일치하는지 확인 필요`);
+        // C1) API Key 존재 여부 체크
+        console.error(`[${requestId}] C1) API Key 체크:`);
+        console.error(`[${requestId}]    - API Key 존재:`, apiKeyExists ? "✅" : "❌");
+        console.error(`[${requestId}]    - Key length:`, apiKey.length, "chars");
+        console.error(`[${requestId}]    - ⚠️ Lemon Dashboard에서 Test mode ON/OFF와 API key가 일치하는지 확인 필요`);
         
         // C2) Store/Variant 소속 불일치 체크
         console.error(`[${requestId}] C2) Store/Variant 소속 체크:`);
@@ -141,7 +139,6 @@ export async function createLemonCheckout(dealId?: string, milestoneId?: string)
         console.error(`[${requestId}]    - Content-Type:`, headers["Content-Type"]);
         console.error(`[${requestId}]    - Accept:`, headers.Accept);
         console.error(`[${requestId}]    - Authorization 존재:`, apiKeyExists ? "✅" : "❌");
-        console.error(`[${requestId}]    - Authorization prefix:`, apiKeyPrefix);
         
         // C4) API 도메인/경로 체크
         console.error(`[${requestId}] C4) API 도메인/경로 체크:`);
