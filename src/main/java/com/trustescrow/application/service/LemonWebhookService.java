@@ -69,48 +69,48 @@ public class LemonWebhookService {
             }
             
             // STEP 1: Log parsed data in required format (per spec)
-            log.info("===== LEMON WEBHOOK PARSED =====");
-            log.info("event: {}", parsed.eventName != null ? parsed.eventName : "(missing)");
-            log.info("dealId: {}", parsed.dealId != null ? parsed.dealId : "(missing)");
-            log.info("milestoneId: {}", parsed.milestoneId != null ? parsed.milestoneId : "(missing)");
-            log.info("==============================");
+            log.info("[WEBHOOK] Parsed: event={}, dealId={}, milestoneId={}, orderId={}", 
+                parsed.eventName != null ? parsed.eventName : "(missing)",
+                parsed.dealId != null ? parsed.dealId : "(missing)",
+                parsed.milestoneId != null ? parsed.milestoneId : "(missing)",
+                parsed.orderId != null ? parsed.orderId : "(missing)");
             
             // STEP 1: Validate conditions - accept order_created, order_paid, or order_refunded
             if (!"order_created".equals(parsed.eventName) && 
                 !"order_paid".equals(parsed.eventName) && 
                 !"order_refunded".equals(parsed.eventName)) {
-                log.info("Event name is not 'order_created', 'order_paid', or 'order_refunded': {}, ignoring", parsed.eventName);
+                log.info("[WEBHOOK] Ignoring event: {} (not order_created/order_paid/order_refunded)", parsed.eventName);
                 return false;
             }
             
             if (parsed.dealId == null || parsed.dealId.isEmpty()) {
-                log.warn("dealId not found in webhook custom_data, ignoring");
+                log.warn("[WEBHOOK] dealId not found in custom_data, ignoring");
                 return false;
             }
             
             // For order_paid, status check is optional (order_paid itself means paid)
             // For order_created, check status == "paid"
             if ("order_created".equals(parsed.eventName) && !"paid".equalsIgnoreCase(parsed.orderStatus)) {
-                log.info("Order status is not 'paid': {}, ignoring", parsed.orderStatus);
+                log.info("[WEBHOOK] Order status is not 'paid': {}, ignoring", parsed.orderStatus);
                 return false;
             }
             
-            log.info("Webhook validated: event={}, dealId={}, milestoneId={}, orderId={}, status={}", 
-                parsed.eventName, parsed.dealId, parsed.milestoneId, parsed.orderId, parsed.orderStatus);
+            log.info("[WEBHOOK] Validated: event={}, dealId={}, milestoneId={}, orderId={}", 
+                parsed.eventName, parsed.dealId, parsed.milestoneId, parsed.orderId);
             
-            // STEP 5: Verify signature (before any DB operations)
-            if (!verifySignature(signature, rawBody)) {
-                log.warn("Invalid Lemon webhook signature, ignoring (no DB changes)");
-                return false; // Return false but still 200 OK
-            }
-            
-            // STEP 3: Idempotency check
+            // STEP 3: Idempotency check (before signature verification for performance)
             Optional<WebhookEvent> existingEvent = webhookEventRepository
                 .findByProviderAndEventId("LEMON", parsed.orderId);
             
             if (existingEvent.isPresent() && existingEvent.get().isProcessed()) {
-                log.info("Duplicate webhook ignored (already processed): orderId={}", parsed.orderId);
+                log.info("[WEBHOOK] Duplicate event ignored (already processed): orderId={}", parsed.orderId);
                 return true; // Already processed, return success
+            }
+            
+            // STEP 3: Verify signature (before any DB operations)
+            if (!verifySignature(signature, rawBody)) {
+                log.warn("[WEBHOOK] Invalid signature, ignoring (no DB changes)");
+                return false; // Return false but still 200 OK
             }
             
             // Save webhook event for idempotency (before business logic)
@@ -139,7 +139,7 @@ public class LemonWebhookService {
                 webhookEvent.markAsProcessed();
                 webhookEventRepository.save(webhookEvent);
                 
-                log.info("===== LEMON WEBHOOK PROCESSING SUCCESS =====");
+                log.info("[WEBHOOK] Processing completed successfully");
                 return true;
             } catch (Exception e) {
                 log.error("Failed to update escrow state for dealId={}, orderId={}: {}", 

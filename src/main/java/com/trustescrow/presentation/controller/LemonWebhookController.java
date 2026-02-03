@@ -48,7 +48,7 @@ public class LemonWebhookController {
             @RequestHeader(value = "X-Signature", required = false) String signature,
             HttpServletRequest request) {
         
-        log.info("===== LEMON WEBHOOK RECEIVED =====");
+        log.info("[WEBHOOK] Received webhook event");
         
         try {
             // STEP 1: Read raw body (required for signature verification)
@@ -58,29 +58,31 @@ public class LemonWebhookController {
             );
             
             if (rawBody == null || rawBody.isEmpty()) {
-                log.warn("Webhook payload is empty");
+                log.warn("[WEBHOOK] Payload is empty");
                 return ResponseEntity.ok().build(); // Still 200 OK
             }
             
-            log.info("X-Signature: {}", signature != null ? signature : "(missing)");
-            log.info("Payload length: {} bytes", rawBody.length());
+            log.info("[WEBHOOK] Payload length: {} bytes", rawBody.length());
             
             // Parse JSON payload (defensive)
             JsonNode payload;
             try {
                 payload = objectMapper.readTree(rawBody);
+                // Extract event name for logging
+                String eventName = payload.path("meta").path("event_name").asText("unknown");
+                log.info("[WEBHOOK] Event: {}", eventName);
             } catch (Exception e) {
-                log.warn("Failed to parse webhook payload as JSON: {}", e.getMessage());
+                log.warn("[WEBHOOK] Failed to parse payload as JSON: {}", e.getMessage());
                 return ResponseEntity.ok().build(); // Still 200 OK
             }
             
-            // STEP 2-5: Process webhook (all steps inside service)
+            // STEP 2: Process webhook (all steps inside service)
             boolean processed = webhookService.processWebhook(signature, rawBody, payload);
             
             if (processed) {
-                log.info("===== LEMON WEBHOOK PROCESSED SUCCESSFULLY (200 OK) =====");
+                log.info("[WEBHOOK] Processed successfully (200 OK)");
             } else {
-                log.info("===== LEMON WEBHOOK IGNORED (200 OK) =====");
+                log.info("[WEBHOOK] Ignored (200 OK)");
             }
             
             // Always return 200 OK (even if ignored or failed)
