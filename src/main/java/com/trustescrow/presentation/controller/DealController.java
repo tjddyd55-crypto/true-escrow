@@ -23,6 +23,7 @@ public class DealController {
     private final DealApplicationService dealService;
     private final TimelineService timelineService;
     private final ContractInstanceRepository instanceRepository;
+    private final com.trustescrow.application.service.EscrowStateService escrowStateService;
     
     @PostMapping
     public ResponseEntity<ApiResponse<DealResponse>> createDeal(
@@ -53,6 +54,21 @@ public class DealController {
     public ResponseEntity<ApiResponse<DealResponse>> getDeal(@PathVariable UUID id) {
         Deal deal = dealService.getDeal(id);
         DealResponse response = DealResponse.from(deal);
+        
+        // Add milestone status from in-memory escrow state
+        String dealIdStr = id.toString();
+        var milestones = escrowStateService.getDealMilestones(dealIdStr);
+        
+        // Convert to milestone list for response
+        var milestoneList = milestones.entrySet().stream()
+            .map(entry -> new DealResponse.MilestoneInfo(
+                entry.getKey(),
+                entry.getValue().getStatus()
+            ))
+            .toList();
+        
+        response.setMilestones(milestoneList);
+        
         return ResponseEntity.ok(ApiResponse.success(response));
     }
     

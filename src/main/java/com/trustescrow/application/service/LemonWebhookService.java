@@ -45,6 +45,7 @@ public class LemonWebhookService {
     private final DealMilestoneRepository milestoneRepository;
     private final PaymentInfoRepository paymentInfoRepository;
     private final DealStateService dealStateService;
+    private final EscrowStateService escrowStateService;
     private final ObjectMapper objectMapper;
     
     /**
@@ -60,16 +61,23 @@ public class LemonWebhookService {
         log.info("===== LEMON WEBHOOK PROCESSING START =====");
         
         try {
-            // STEP 2: Parse payload (defensive)
+            // STEP 1: Parse payload (defensive)
             ParsedWebhookData parsed = parsePayload(payload);
             if (parsed == null) {
                 log.warn("Failed to parse webhook payload, ignoring");
                 return false;
             }
             
-            // STEP 2: Validate conditions
-            if (!"order_created".equals(parsed.eventName)) {
-                log.info("Event name is not 'order_created': {}, ignoring", parsed.eventName);
+            // STEP 1: Log parsed data in required format
+            log.info("===== LEMON WEBHOOK PARSED =====");
+            log.info("event: {}", parsed.eventName != null ? parsed.eventName : "(missing)");
+            log.info("dealId: {}", parsed.dealId != null ? parsed.dealId : "(missing)");
+            log.info("milestoneId: {}", parsed.milestoneId != null ? parsed.milestoneId : "(missing)");
+            log.info("==============================");
+            
+            // STEP 1: Validate conditions - accept order_created or order_paid
+            if (!"order_created".equals(parsed.eventName) && !"order_paid".equals(parsed.eventName)) {
+                log.info("Event name is not 'order_created' or 'order_paid': {}, ignoring", parsed.eventName);
                 return false;
             }
             
@@ -78,13 +86,15 @@ public class LemonWebhookService {
                 return false;
             }
             
-            if (!"paid".equalsIgnoreCase(parsed.orderStatus)) {
+            // For order_paid, status check is optional (order_paid itself means paid)
+            // For order_created, check status == "paid"
+            if ("order_created".equals(parsed.eventName) && !"paid".equalsIgnoreCase(parsed.orderStatus)) {
                 log.info("Order status is not 'paid': {}, ignoring", parsed.orderStatus);
                 return false;
             }
             
-            log.info("Webhook validated: event={}, dealId={}, orderId={}, status={}", 
-                parsed.eventName, parsed.dealId, parsed.orderId, parsed.orderStatus);
+            log.info("Webhook validated: event={}, dealId={}, milestoneId={}, orderId={}, status={}", 
+                parsed.eventName, parsed.dealId, parsed.milestoneId, parsed.orderId, parsed.orderStatus);
             
             // STEP 5: Verify signature (before any DB operations)
             if (!verifySignature(signature, rawBody)) {
@@ -118,9 +128,17 @@ public class LemonWebhookService {
                 webhookEventRepository.save(webhookEvent);
             }
             
-            // STEP 4: Update escrow state (in transaction)
+            // STEP 2: Update in-memory escrow state (milestone status)
             try {
-                updateEscrowState(parsed);
+                if (parsed.milestoneId != null && !parsed.milestoneId.isEmpty()) {
+                    escrowStateService.setMilestoneFunded(parsed.dealId, parsed.milestoneId);
+                    log.info("Milestone {} for deal {} set to FUNDED", parsed.milestoneId, parsed.dealId);
+                } else {
+                    log.warn("milestoneId not found in webhook, skipping milestone state update");
+                }
+                
+                // STEP 4: Update DB escrow state (Deal / Milestone / Payment) - optional for now
+                // updateEscrowState(parsed);
                 
                 // Mark as processed only after successful update
                 webhookEvent.markAsProcessed();
@@ -145,16 +163,24 @@ public class LemonWebhookService {
     
     /**
      * STEP 2: Parse payload defensively.
+     * 
+     * Supports multiple payload formats:
+     * - meta.event_name
+     * - meta.custom_data.dealId / milestoneId
+     * - data.attributes.custom.checkout_data (alternative format)
      */
     private ParsedWebhookData parsePayload(JsonNode payload) {
         try {
             ParsedWebhookData parsed = new ParsedWebhookData();
             
-            // Parse event_name
+            // Parse event_name (meta.event_name or event_name)
             JsonNode meta = payload.path("meta");
             parsed.eventName = meta.path("event_name").asText(null);
+            if (parsed.eventName == null || parsed.eventName.isEmpty()) {
+                parsed.eventName = payload.path("event_name").asText(null);
+            }
             
-            // Parse custom_data.dealId
+            // Parse custom_data.dealId (primary path)
             JsonNode customData = meta.path("custom_data");
             parsed.dealId = customData.path("dealId").asText(null);
             if (parsed.dealId == null || parsed.dealId.isEmpty()) {
@@ -164,6 +190,26 @@ public class LemonWebhookService {
             parsed.milestoneId = customData.path("milestoneId").asText(null);
             if (parsed.milestoneId == null || parsed.milestoneId.isEmpty()) {
                 parsed.milestoneId = customData.path("milestone_id").asText(null); // Fallback
+            }
+            
+            // Alternative: data.attributes.custom.checkout_data
+            if (parsed.dealId == null || parsed.dealId.isEmpty()) {
+                JsonNode data = payload.path("data");
+                JsonNode attributes = data.path("attributes");
+                JsonNode custom = attributes.path("custom");
+                JsonNode checkoutData = custom.path("checkout_data");
+                
+                if (checkoutData != null && !checkoutData.isMissingNode()) {
+                    parsed.dealId = checkoutData.path("dealId").asText(null);
+                    if (parsed.dealId == null || parsed.dealId.isEmpty()) {
+                        parsed.dealId = checkoutData.path("deal_id").asText(null);
+                    }
+                    
+                    parsed.milestoneId = checkoutData.path("milestoneId").asText(null);
+                    if (parsed.milestoneId == null || parsed.milestoneId.isEmpty()) {
+                        parsed.milestoneId = checkoutData.path("milestone_id").asText(null);
+                    }
+                }
             }
             
             // Parse data.id (order ID)

@@ -133,36 +133,73 @@ export default function DealDetail() {
         </div>
       )}
 
-      {deal.milestones?.map((m: any) => (
-        <div key={m.id} style={{ border: "1px solid #ccc", padding: 12, marginBottom: 12 }}>
-          <p><b>{m.title}</b></p>
-          <p>Amount: ${m.amount}</p>
-          <p>Status: {m.status}</p>
+      {deal.milestones?.map((m: any) => {
+        // Status text mapping
+        const statusText = m.status === "PENDING" 
+          ? "결제 대기" 
+          : m.status === "FUNDED" 
+          ? "에스크로 보류 중" 
+          : m.status === "RELEASED"
+          ? "지급 완료"
+          : m.status;
+        
+        const statusColor = m.status === "PENDING" 
+          ? "#f39c12" 
+          : m.status === "FUNDED" 
+          ? "#00b894" 
+          : m.status === "RELEASED"
+          ? "#0984e3"
+          : "#666";
+        
+        return (
+          <div key={m.id} style={{ border: "1px solid #ccc", padding: 12, marginBottom: 12 }}>
+            <p><b>{m.title || m.id}</b></p>
+            <p>Amount: ${m.amount || 0} {m.currency || "USD"}</p>
+            <p style={{ color: statusColor, fontWeight: "bold" }}>
+              Status: {statusText}
+            </p>
 
-          <p style={{ fontSize: 12, color: "#666", marginTop: 12, marginBottom: 8 }}>
-            By proceeding to payment, funds will be held in escrow.
-          </p>
+            {m.status === "PENDING" && (
+              <>
+                <p style={{ fontSize: 12, color: "#666", marginTop: 12, marginBottom: 8 }}>
+                  By proceeding to payment, funds will be held in escrow.
+                </p>
 
-          <button 
-            onClick={() => proceedPayment(params.id as string)}
-            disabled={loading}
-            style={{ 
-              padding: "12px 24px",
-              fontSize: 16,
-              fontWeight: "bold",
-              backgroundColor: loading ? "#b2bec3" : "#00b894",
-              color: "white",
-              border: "none",
-              borderRadius: 4,
-              opacity: loading ? 0.6 : 1, 
-              cursor: loading ? "not-allowed" : "pointer",
-              transition: "all 0.2s"
-            }}
-          >
-            {loading ? "Processing..." : "Proceed Payment"}
-          </button>
-        </div>
-      ))}
+                <button 
+                  onClick={() => proceedPayment(params.id as string)}
+                  disabled={loading}
+                  style={{ 
+                    padding: "12px 24px",
+                    fontSize: 16,
+                    fontWeight: "bold",
+                    backgroundColor: loading ? "#b2bec3" : "#00b894",
+                    color: "white",
+                    border: "none",
+                    borderRadius: 4,
+                    opacity: loading ? 0.6 : 1, 
+                    cursor: loading ? "not-allowed" : "pointer",
+                    transition: "all 0.2s"
+                  }}
+                >
+                  {loading ? "Processing..." : "Proceed Payment"}
+                </button>
+              </>
+            )}
+            
+            {m.status === "FUNDED" && (
+              <p style={{ fontSize: 12, color: "#00b894", marginTop: 12, marginBottom: 8 }}>
+                ✅ Funds are held in escrow. Waiting for release.
+              </p>
+            )}
+            
+            {m.status === "RELEASED" && (
+              <p style={{ fontSize: 12, color: "#0984e3", marginTop: 12, marginBottom: 8 }}>
+                ✅ Payment completed and released.
+              </p>
+            )}
+          </div>
+        );
+      })}
     </main>
   );
 }

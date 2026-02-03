@@ -7,6 +7,7 @@ import lombok.Data;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
 @Data
@@ -25,6 +26,19 @@ public class DealResponse {
     private UUID contractInstanceId;
     private Instant createdAt;
     private Instant updatedAt;
+    private List<MilestoneInfo> milestones;
+    
+    @Data
+    @Builder
+    public static class MilestoneInfo {
+        private String id;
+        private String status; // "PENDING" | "FUNDED" | "RELEASED"
+        
+        public MilestoneInfo(String id, String status) {
+            this.id = id;
+            this.status = status;
+        }
+    }
     
     public static DealResponse from(Deal deal) {
         return DealResponse.builder()
