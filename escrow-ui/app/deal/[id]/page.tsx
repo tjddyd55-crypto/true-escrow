@@ -174,10 +174,11 @@ export default function DealDetail() {
           ? "#0984e3"
           : "#666";
         
-        console.log(`===== STEP 4: RENDERING MILESTONE =====");
-        console.log(`Milestone ID: ${m.id}`);
-        console.log(`Status: ${m.status} -> ${statusText}`);
-        console.log(`Color: ${statusColor}`);
+        // STEP 4: Logging (outside JSX to avoid parsing issues)
+        console.log("===== STEP 4: RENDERING MILESTONE =====");
+        console.log("Milestone ID:", m.id);
+        console.log("Status:", m.status, "->", statusText);
+        console.log("Color:", statusColor);
         
         return (
           <div key={m.id} style={{ border: "1px solid #ccc", padding: 12, marginBottom: 12 }}>
