@@ -64,11 +64,11 @@ public class LemonWebhookService {
             // STEP 1: Parse payload (defensive)
             ParsedWebhookData parsed = parsePayload(payload);
             if (parsed == null) {
-                log.warn("Failed to parse webhook payload, ignoring");
+                log.warn("===== STEP 1: PARSING FAILED - IGNORING WEBHOOK =====");
                 return false;
             }
             
-            // STEP 1: Log parsed data in required format
+            // STEP 1: Log parsed data in required format (per spec)
             log.info("===== LEMON WEBHOOK PARSED =====");
             log.info("event: {}", parsed.eventName != null ? parsed.eventName : "(missing)");
             log.info("dealId: {}", parsed.dealId != null ? parsed.dealId : "(missing)");
@@ -129,12 +129,16 @@ public class LemonWebhookService {
             }
             
             // STEP 2: Update in-memory escrow state (milestone status)
+            log.info("===== STEP 2: MILESTONE STATE UPDATE START =====");
             try {
                 if (parsed.milestoneId != null && !parsed.milestoneId.isEmpty()) {
+                    log.info("Updating milestone state: dealId={}, milestoneId={}", parsed.dealId, parsed.milestoneId);
                     escrowStateService.setMilestoneFunded(parsed.dealId, parsed.milestoneId);
-                    log.info("Milestone {} for deal {} set to FUNDED", parsed.milestoneId, parsed.dealId);
+                    log.info("===== STEP 2: MILESTONE STATE UPDATE SUCCESS =====");
                 } else {
+                    log.warn("===== STEP 2: MILESTONE STATE UPDATE SKIPPED =====");
                     log.warn("milestoneId not found in webhook, skipping milestone state update");
+                    log.warn("dealId: {}", parsed.dealId);
                 }
                 
                 // STEP 4: Update DB escrow state (Deal / Milestone / Payment) - optional for now
@@ -162,78 +166,108 @@ public class LemonWebhookService {
     }
     
     /**
-     * STEP 2: Parse payload defensively.
+     * STEP 1: Parse payload defensively with detailed logging.
      * 
      * Supports multiple payload formats:
      * - meta.event_name
      * - meta.custom_data.dealId / milestoneId
-     * - data.attributes.custom.checkout_data (alternative format)
+     * - data.attributes.custom.checkout_data (primary path per spec)
      */
     private ParsedWebhookData parsePayload(JsonNode payload) {
+        log.info("===== STEP 1: WEBHOOK PARSING START =====");
+        
         try {
             ParsedWebhookData parsed = new ParsedWebhookData();
             
             // Parse event_name (meta.event_name or event_name)
+            log.info("Parsing event_name...");
             JsonNode meta = payload.path("meta");
             parsed.eventName = meta.path("event_name").asText(null);
             if (parsed.eventName == null || parsed.eventName.isEmpty()) {
                 parsed.eventName = payload.path("event_name").asText(null);
             }
+            log.info("Extracted event_name: {}", parsed.eventName != null ? parsed.eventName : "(null)");
             
-            // Parse custom_data.dealId (primary path)
-            JsonNode customData = meta.path("custom_data");
-            parsed.dealId = customData.path("dealId").asText(null);
-            if (parsed.dealId == null || parsed.dealId.isEmpty()) {
-                parsed.dealId = customData.path("deal_id").asText(null); // Fallback
-            }
+            // STEP 1: Primary path - data.attributes.custom.checkout_data (per spec)
+            log.info("Parsing data.attributes.custom.checkout_data (primary path)...");
+            JsonNode data = payload.path("data");
+            JsonNode attributes = data.path("attributes");
+            JsonNode custom = attributes.path("custom");
+            JsonNode checkoutData = custom.path("checkout_data");
             
-            parsed.milestoneId = customData.path("milestoneId").asText(null);
-            if (parsed.milestoneId == null || parsed.milestoneId.isEmpty()) {
-                parsed.milestoneId = customData.path("milestone_id").asText(null); // Fallback
-            }
-            
-            // Alternative: data.attributes.custom.checkout_data
-            if (parsed.dealId == null || parsed.dealId.isEmpty()) {
-                JsonNode data = payload.path("data");
-                JsonNode attributes = data.path("attributes");
-                JsonNode custom = attributes.path("custom");
-                JsonNode checkoutData = custom.path("checkout_data");
-                
-                if (checkoutData != null && !checkoutData.isMissingNode()) {
-                    parsed.dealId = checkoutData.path("dealId").asText(null);
-                    if (parsed.dealId == null || parsed.dealId.isEmpty()) {
-                        parsed.dealId = checkoutData.path("deal_id").asText(null);
-                    }
-                    
-                    parsed.milestoneId = checkoutData.path("milestoneId").asText(null);
-                    if (parsed.milestoneId == null || parsed.milestoneId.isEmpty()) {
-                        parsed.milestoneId = checkoutData.path("milestone_id").asText(null);
-                    }
+            if (checkoutData != null && !checkoutData.isMissingNode()) {
+                log.info("Found checkout_data node, extracting dealId and milestoneId...");
+                parsed.dealId = checkoutData.path("dealId").asText(null);
+                if (parsed.dealId == null || parsed.dealId.isEmpty()) {
+                    parsed.dealId = checkoutData.path("deal_id").asText(null);
                 }
+                
+                parsed.milestoneId = checkoutData.path("milestoneId").asText(null);
+                if (parsed.milestoneId == null || parsed.milestoneId.isEmpty()) {
+                    parsed.milestoneId = checkoutData.path("milestone_id").asText(null);
+                }
+                
+                log.info("From checkout_data - dealId: {}, milestoneId: {}", 
+                    parsed.dealId != null ? parsed.dealId : "(null)",
+                    parsed.milestoneId != null ? parsed.milestoneId : "(null)");
+            } else {
+                log.warn("checkout_data node not found in data.attributes.custom, trying alternative paths...");
+            }
+            
+            // Fallback: meta.custom_data.dealId / milestoneId
+            if (parsed.dealId == null || parsed.dealId.isEmpty()) {
+                log.info("Trying fallback path: meta.custom_data...");
+                JsonNode customData = meta.path("custom_data");
+                parsed.dealId = customData.path("dealId").asText(null);
+                if (parsed.dealId == null || parsed.dealId.isEmpty()) {
+                    parsed.dealId = customData.path("deal_id").asText(null);
+                }
+                
+                parsed.milestoneId = customData.path("milestoneId").asText(null);
+                if (parsed.milestoneId == null || parsed.milestoneId.isEmpty()) {
+                    parsed.milestoneId = customData.path("milestone_id").asText(null);
+                }
+                
+                log.info("From meta.custom_data - dealId: {}, milestoneId: {}", 
+                    parsed.dealId != null ? parsed.dealId : "(null)",
+                    parsed.milestoneId != null ? parsed.milestoneId : "(null)");
             }
             
             // Parse data.id (order ID)
-            JsonNode data = payload.path("data");
             parsed.orderId = data.path("id").asText(null);
+            log.info("Extracted orderId: {}", parsed.orderId != null ? parsed.orderId : "(null)");
             
             // Parse data.attributes.status
-            JsonNode attributes = data.path("attributes");
             parsed.orderStatus = attributes.path("status").asText(null);
+            log.info("Extracted orderStatus: {}", parsed.orderStatus != null ? parsed.orderStatus : "(null)");
             
             // Parse amount and currency
             String totalStr = attributes.path("total").asText(null);
             if (totalStr != null && !totalStr.isEmpty()) {
                 try {
                     parsed.totalAmount = new BigDecimal(totalStr);
+                    log.info("Extracted totalAmount: {}", parsed.totalAmount);
                 } catch (NumberFormatException e) {
                     log.warn("Invalid total amount format: {}", totalStr);
                 }
             }
             parsed.currency = attributes.path("currency").asText(null);
+            log.info("Extracted currency: {}", parsed.currency != null ? parsed.currency : "(null)");
+            
+            // Final validation log
+            log.info("===== STEP 1: WEBHOOK PARSING RESULT =====");
+            log.info("event_name: {}", parsed.eventName != null ? parsed.eventName : "(null)");
+            log.info("dealId: {}", parsed.dealId != null ? parsed.dealId : "(null)");
+            log.info("milestoneId: {}", parsed.milestoneId != null ? parsed.milestoneId : "(null)");
+            log.info("orderId: {}", parsed.orderId != null ? parsed.orderId : "(null)");
+            log.info("orderStatus: {}", parsed.orderStatus != null ? parsed.orderStatus : "(null)");
+            log.info("==========================================");
             
             return parsed;
         } catch (Exception e) {
-            log.error("Failed to parse webhook payload: {}", e.getMessage(), e);
+            log.error("===== STEP 1: WEBHOOK PARSING FAILED =====");
+            log.error("Error: {}", e.getMessage(), e);
+            log.error("==========================================");
             return null;
         }
     }

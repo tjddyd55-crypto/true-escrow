@@ -50,24 +50,39 @@ public class DealController {
         return ResponseEntity.ok(ApiResponse.success(response, meta));
     }
     
+    /**
+     * STEP 3: Deal 조회 API
+     * Returns deal information with milestone status from in-memory escrow state.
+     */
     @GetMapping("/{id}")
     public ResponseEntity<ApiResponse<DealResponse>> getDeal(@PathVariable UUID id) {
+        log.info("===== STEP 3: DEAL QUERY API START =====");
+        log.info("Deal ID: {}", id);
+        
         Deal deal = dealService.getDeal(id);
         DealResponse response = DealResponse.from(deal);
         
-        // Add milestone status from in-memory escrow state
+        // STEP 3: Add milestone status from in-memory escrow state
         String dealIdStr = id.toString();
+        log.info("Querying milestone status for dealId: {}", dealIdStr);
+        
         var milestones = escrowStateService.getDealMilestones(dealIdStr);
+        log.info("Found {} milestones in state storage", milestones.size());
         
         // Convert to milestone list for response
         var milestoneList = milestones.entrySet().stream()
-            .map(entry -> new DealResponse.MilestoneInfo(
-                entry.getKey(),
-                entry.getValue().getStatus()
-            ))
+            .map(entry -> {
+                String milestoneId = entry.getKey();
+                String status = entry.getValue().getStatus();
+                log.info("  - milestoneId: {}, status: {}", milestoneId, status);
+                return new DealResponse.MilestoneInfo(milestoneId, status);
+            })
             .toList();
         
         response.setMilestones(milestoneList);
+        
+        log.info("===== STEP 3: DEAL QUERY API SUCCESS =====");
+        log.info("Returning deal with {} milestones", milestoneList.size());
         
         return ResponseEntity.ok(ApiResponse.success(response));
     }

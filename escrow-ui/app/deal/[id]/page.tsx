@@ -10,17 +10,40 @@ export default function DealDetail() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
+    console.log("===== STEP 4: FRONTEND DEAL PAGE LOAD =====");
+    console.log("Deal ID:", params.id);
+    console.log("Fetching deal data...");
+    
     fetch(`/api/deals/${params.id}`)
       .then(async (res) => {
+        console.log("API response status:", res.status);
         const data = await res.json();
+        console.log("API response data:", JSON.stringify(data, null, 2));
+        
         if (!res.ok) {
           throw new Error(data.message || "API Error");
         }
+        
+        console.log("Deal data received:");
+        console.log("  - Deal ID:", data.id);
+        console.log("  - Milestones count:", data.milestones?.length || 0);
+        if (data.milestones) {
+          data.milestones.forEach((m: any, idx: number) => {
+            console.log(`  - Milestone ${idx + 1}: id=${m.id}, status=${m.status}, title=${m.title}`);
+          });
+        }
+        
         return data;
       })
-      .then(setDeal)
+      .then((data) => {
+        console.log("Setting deal state...");
+        setDeal(data);
+        console.log("===== STEP 4: FRONTEND DEAL PAGE LOAD SUCCESS =====");
+      })
       .catch((err) => {
-        console.error(err);
+        console.error("===== STEP 4: FRONTEND DEAL PAGE LOAD ERROR =====");
+        console.error("Error:", err);
+        console.error("Error message:", err.message);
         setError(err.message);
       });
   }, [params.id]);
@@ -134,7 +157,7 @@ export default function DealDetail() {
       )}
 
       {deal.milestones?.map((m: any) => {
-        // Status text mapping
+        // STEP 4: Status text mapping
         const statusText = m.status === "PENDING" 
           ? "결제 대기" 
           : m.status === "FUNDED" 
@@ -150,6 +173,11 @@ export default function DealDetail() {
           : m.status === "RELEASED"
           ? "#0984e3"
           : "#666";
+        
+        console.log(`===== STEP 4: RENDERING MILESTONE =====");
+        console.log(`Milestone ID: ${m.id}`);
+        console.log(`Status: ${m.status} -> ${statusText}`);
+        console.log(`Color: ${statusColor}`);
         
         return (
           <div key={m.id} style={{ border: "1px solid #ccc", padding: 12, marginBottom: 12 }}>
