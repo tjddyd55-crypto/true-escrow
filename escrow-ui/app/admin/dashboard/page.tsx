@@ -3,13 +3,13 @@
 import { useEffect, useState } from "react";
 
 /**
- * STEP 7: Escrow 운영 대시보드
+ * STEP 7: Escrow Operations Dashboard
  * 
- * 전체 상황판:
- * - KPI 카드 (총 거래 수, FUNDS_HELD 수, RELEASE_REQUESTED 수, DISPUTED 수, 평균 보관 기간, 지연 거래 수)
- * - Deal 타임라인 뷰
- * - 이상 감지 패널
- * - 관리자 액션 패널
+ * Overview:
+ * - KPI Cards (Total Transactions, In Escrow, Release Requests, In Dispute, Average Holding Period, Delayed Transactions)
+ * - Deal Timeline View
+ * - Anomaly Detection Panel
+ * - Admin Actions Panel
  */
 export default function AdminDashboard() {
   const [stats, setStats] = useState<any>(null);
@@ -95,7 +95,7 @@ export default function AdminDashboard() {
 
   return (
     <div style={{ padding: 24, maxWidth: 1400, margin: "0 auto" }}>
-      <h1>Escrow 운영 대시보드</h1>
+      <h1>Escrow Operations Dashboard</h1>
       
       {loading && <div>Loading...</div>}
       
@@ -108,32 +108,32 @@ export default function AdminDashboard() {
           marginBottom: 24 
         }}>
           <KPICard 
-            title="총 거래 수" 
+            title="Total Transactions" 
             value={stats.totalDeals} 
             color="#0984e3"
           />
           <KPICard 
-            title="에스크로 보류 중" 
+            title="In Escrow (Simulated)" 
             value={stats.fundsHeld} 
             color="#00b894"
           />
           <KPICard 
-            title="Release 요청 대기" 
+            title="Release Requests Pending" 
             value={stats.releaseRequested} 
             color="#e67e22"
           />
           <KPICard 
-            title="분쟁 중" 
+            title="In Dispute" 
             value={stats.disputed} 
             color="#e74c3c"
           />
           <KPICard 
-            title="평균 보관 기간" 
-            value={`${stats.avgHoldingDays}일`} 
+            title="Average Holding Period" 
+            value={`${stats.avgHoldingDays} days`} 
             color="#6c5ce7"
           />
           <KPICard 
-            title="지연 거래" 
+            title="Delayed Transactions" 
             value={stats.delayedDeals} 
             color="#d63031"
           />
@@ -143,7 +143,7 @@ export default function AdminDashboard() {
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
         {/* 2. Deal Timeline View */}
         <div>
-          <h2>Deal 타임라인</h2>
+          <h2>Deal Timeline</h2>
           <div style={{ border: "1px solid #ccc", borderRadius: 4, padding: 16 }}>
             {deals.map((deal) => (
               <div
@@ -162,12 +162,12 @@ export default function AdminDashboard() {
                 </div>
                 {selectedDeal?.id === deal.id && selectedDeal.milestones && (
                   <div style={{ marginTop: 12, paddingLeft: 16, borderLeft: "2px solid #0984e3" }}>
-                    <div style={{ fontSize: 14, fontWeight: "bold", marginBottom: 8 }}>타임라인:</div>
+                    <div style={{ fontSize: 14, fontWeight: "bold", marginBottom: 8 }}>Timeline:</div>
                     {selectedDeal.milestones.map((m: any, idx: number) => (
                       <div key={m.id} style={{ marginBottom: 8, fontSize: 12 }}>
-                        <div style={{ fontWeight: "bold" }}>마일스톤 {idx + 1}: {m.id}</div>
+                        <div style={{ fontWeight: "bold" }}>Milestone {idx + 1}: {m.id}</div>
                         <div style={{ color: "#666" }}>
-                          상태: {m.status} | 금액: ${m.amount || 0}
+                          Status: {m.status} | Amount: ${m.amount || 0}
                         </div>
                         {m.orderId && (
                           <div style={{ color: "#666", fontSize: 11 }}>
@@ -188,13 +188,13 @@ export default function AdminDashboard() {
           </div>
         </div>
 
-        {/* 3. 이상 감지 패널 */}
+        {/* 3. Anomaly Detection Panel */}
         <div>
-          <h2>이상 감지</h2>
+          <h2>Anomaly Detection</h2>
           <div style={{ border: "1px solid #ccc", borderRadius: 4, padding: 16 }}>
             {anomalies.length === 0 ? (
               <div style={{ color: "#666", textAlign: "center", padding: 24 }}>
-                이상 사항 없음
+                No Anomalies
               </div>
             ) : (
               anomalies.map((anomaly: any, idx: number) => (
@@ -224,31 +224,31 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {/* 4. 관리자 액션 패널 */}
+      {/* 4. Admin Actions Panel */}
       <div style={{ marginTop: 24 }}>
-        <h2>관리자 액션</h2>
+        <h2>Admin Actions</h2>
         <div style={{ 
           display: "grid", 
           gridTemplateColumns: "repeat(4, 1fr)", 
           gap: 16 
         }}>
           <ActionButton 
-            label="Release 승인 대기" 
+            label="Pending Release Approvals" 
             count={stats?.releaseRequested || 0}
             onClick={() => window.location.href = "/admin/deals"}
           />
           <ActionButton 
-            label="분쟁 처리 대기" 
+            label="Pending Dispute Resolutions" 
             count={stats?.disputed || 0}
             onClick={() => window.location.href = "/admin/disputes"}
           />
           <ActionButton 
-            label="이상 거래 확인" 
+            label="Review Anomalies" 
             count={stats?.delayedDeals || 0}
             onClick={() => {}}
           />
           <ActionButton 
-            label="온체인 기록" 
+            label="On-Chain Records" 
             count={0}
             onClick={() => {}}
           />
@@ -287,7 +287,7 @@ function ActionButton({ label, count, onClick }: { label: string; count: number;
       }}
     >
       <div style={{ fontSize: 14, fontWeight: "bold", marginBottom: 4 }}>{label}</div>
-      <div style={{ fontSize: 20, color: "#0984e3" }}>{count}건</div>
+      <div style={{ fontSize: 20, color: "#0984e3" }}>{count} items</div>
     </button>
   );
 }

@@ -115,12 +115,55 @@ export default function SellerDashboard() {
               </div>
 
               {tx.milestones && (
-                <div style={{ fontSize: "0.9rem", color: "#666" }}>
+                <div style={{ fontSize: "0.9rem", color: "#666", marginBottom: 10 }}>
                   {tx.milestones.filter(m => m.status === "PENDING").length} pending,{" "}
                   {tx.milestones.filter(m => m.status === "SUBMITTED").length} submitted,{" "}
                   {tx.milestones.filter(m => m.status === "APPROVED").length} approved
                 </div>
               )}
+
+              {/* Current Milestone Info */}
+              {tx.milestones && tx.milestones.length > 0 && (
+                <div style={{ marginBottom: 10 }}>
+                  <p style={{ margin: 0, fontSize: "0.9rem", fontWeight: "600" }}>
+                    Current Milestone: {tx.milestones.find(m => m.status === "PENDING" || m.status === "SUBMITTED")?.title || tx.milestones[0].title}
+                  </p>
+                </div>
+              )}
+
+              {/* Action Buttons */}
+              <div style={{ display: "flex", gap: 10, marginTop: 10 }}>
+                <a
+                  href={`/seller/milestones/${tx.id}`}
+                  style={{
+                    padding: "8px 16px",
+                    backgroundColor: "#6c5ce7",
+                    color: "white",
+                    textDecoration: "none",
+                    borderRadius: 4,
+                    fontSize: "0.9rem",
+                    fontWeight: "600",
+                  }}
+                >
+                  Upload File
+                </a>
+                {tx.milestones && tx.milestones.some(m => m.status === "PENDING") && (
+                  <a
+                    href={`/seller/milestones/${tx.id}`}
+                    style={{
+                      padding: "8px 16px",
+                      backgroundColor: "#00b894",
+                      color: "white",
+                      textDecoration: "none",
+                      borderRadius: 4,
+                      fontSize: "0.9rem",
+                      fontWeight: "600",
+                    }}
+                  >
+                    Submit Milestone
+                  </a>
+                )}
+              </div>
             </a>
           ))}
         </div>

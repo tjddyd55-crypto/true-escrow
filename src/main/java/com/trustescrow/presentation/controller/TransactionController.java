@@ -30,8 +30,12 @@ public class TransactionController {
         if ("ADMIN".equals(userRole)) {
             transactions = transactionService.getAllTransactions();
         } else if (userId != null) {
-            // Assume buyer for now, can be extended
-            transactions = transactionService.getTransactionsByBuyer(userId);
+            if ("SELLER".equals(userRole)) {
+                transactions = transactionService.getTransactionsBySeller(userId);
+            } else {
+                // Default to buyer
+                transactions = transactionService.getTransactionsByBuyer(userId);
+            }
         } else {
             transactions = Collections.emptyList();
         }
