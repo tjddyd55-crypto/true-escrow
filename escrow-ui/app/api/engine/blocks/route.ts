@@ -18,7 +18,6 @@ export async function POST(request: NextRequest) {
       endDay: body.endDay,
       orderIndex: body.orderIndex,
       approvalPolicyId: policy.id,
-      isActive: false,
     });
     
     return NextResponse.json({ ok: true, data: block });
