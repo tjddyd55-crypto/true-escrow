@@ -83,12 +83,12 @@ function generateId(): string {
   return `id-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 }
 
-function getTransaction(id: string): Transaction | undefined {
+function findTransaction(id: string): Transaction | undefined {
   return transactions.find((t) => t.id === id);
 }
 
 function isDraft(transactionId: string): boolean {
-  const tx = getTransaction(transactionId);
+  const tx = findTransaction(transactionId);
   return tx?.status === "DRAFT";
 }
 
@@ -162,7 +162,7 @@ export function saveTransactionGraph(graph: TransactionGraph): void {
 }
 
 export function activateTransaction(id: string): Transaction {
-  const tx = getTransaction(id);
+  const tx = findTransaction(id);
   if (!tx) {
     throw new Error("Transaction not found");
   }
@@ -453,7 +453,7 @@ export function approveBlock(blockId: string): Block {
     appendLog(block.transactionId, "ADMIN", "BLOCK_ACTIVATED", { blockId: nextBlock.id });
   } else {
     // All blocks completed
-    const tx = getTransaction(block.transactionId);
+    const tx = findTransaction(block.transactionId);
     if (tx) {
       tx.status = "COMPLETED";
       appendLog(block.transactionId, "ADMIN", "TRANSACTION_COMPLETED");
