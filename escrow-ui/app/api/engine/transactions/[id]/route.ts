@@ -12,7 +12,7 @@ export async function GET(
       return NextResponse.json({ ok: false, error: "Transaction not found" }, { status: 404 });
     }
     
-    const blocks = store.getBlocks(params.id);
+    const blocks = store.getBlocks(id);
     const graph = {
       transaction,
       blocks,
