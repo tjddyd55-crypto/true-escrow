@@ -667,7 +667,7 @@ export default function TransactionBuilderPage() {
                     <div style={{ marginBottom: 15 }}>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
                         <h4 style={{ margin: 0, fontSize: "1rem" }}>{t.workRules}</h4>
-                        {isDraft && (
+                        {isDraft && !block.isActive && (
                           <button
                             onClick={() => addWorkRule(block.id)}
                             style={{
