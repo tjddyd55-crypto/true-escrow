@@ -49,7 +49,7 @@ public class TransactionSeedService implements CommandLineRunner {
             "Website Redesign Project",
             buyerId,
             sellerId,
-            Transaction.TransactionStatus.IN_PROGRESS
+            Transaction.TransactionStatus.ACTIVE
         );
         
         createMilestones(t1.getId(), Arrays.asList(
@@ -63,7 +63,7 @@ public class TransactionSeedService implements CommandLineRunner {
             "Company Logo Design",
             buyerId,
             sellerId,
-            Transaction.TransactionStatus.WAITING_APPROVAL
+            Transaction.TransactionStatus.ACTIVE
         );
         
         List<TransactionMilestone> t2Milestones = createMilestones(t2.getId(), Arrays.asList(
@@ -82,7 +82,7 @@ public class TransactionSeedService implements CommandLineRunner {
             "Blog Content Package",
             buyerId,
             sellerId,
-            Transaction.TransactionStatus.ESCROW_SIMULATED
+            Transaction.TransactionStatus.DRAFT
         );
         
         createMilestones(t3.getId(), Arrays.asList(
@@ -98,6 +98,8 @@ public class TransactionSeedService implements CommandLineRunner {
                                          Transaction.TransactionStatus status) {
         Transaction transaction = Transaction.builder()
             .title(title)
+            .initiatorId(buyerId)
+            .initiatorRole(Transaction.InitiatorRole.BUYER)
             .buyerId(buyerId)
             .sellerId(sellerId)
             .status(status)

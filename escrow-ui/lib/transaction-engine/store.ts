@@ -315,7 +315,7 @@ export function deleteWorkRule(ruleId: string): void {
 
   workRules = workRules.filter((r) => r.id !== ruleId);
   workItems = workItems.filter((wi) => wi.workRuleId !== ruleId);
-  appendLog(block.transactionId, "ADMIN", "WORK_RULE_DELETED", { workRuleId });
+  appendLog(block.transactionId, "ADMIN", "WORK_RULE_DELETED", { workRuleId: ruleId });
   saveToFile();
 }
 

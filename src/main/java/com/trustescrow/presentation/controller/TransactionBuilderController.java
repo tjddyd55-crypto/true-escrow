@@ -122,14 +122,16 @@ public class TransactionBuilderController {
         
         List<Block> blocks = builderService.getBlocks(transactionId);
         List<Map<String, Object>> response = blocks.stream()
-            .map(b -> Map.of(
-                "id", b.getId(),
-                "title", b.getTitle(),
-                "startDay", b.getStartDay(),
-                "endDay", b.getEndDay(),
-                "orderIndex", b.getOrderIndex(),
-                "isActive", b.getIsActive()
-            ))
+            .map(b -> {
+                Map<String, Object> map = new java.util.HashMap<>();
+                map.put("id", b.getId());
+                map.put("title", b.getTitle());
+                map.put("startDay", b.getStartDay());
+                map.put("endDay", b.getEndDay());
+                map.put("orderIndex", b.getOrderIndex());
+                map.put("isActive", b.getIsActive());
+                return map;
+            })
             .toList();
         
         return ResponseEntity.ok(ApiResponse.success(response));
