@@ -27,8 +27,8 @@ export default function GlobalTransactions() {
         </h2>
         <div style={{ fontSize: "1.1rem", color: "#555", lineHeight: 1.8 }}>
           <p>
-            <strong>true-escrow</strong> is designed to minimize trust issues and payment risks
-            that arise in cross-border transactions.
+            <strong>true-escrow</strong> is designed for global transaction use cases,
+            helping businesses manage milestone-based transactions across borders.
           </p>
         </div>
       </section>
@@ -131,10 +131,10 @@ export default function GlobalTransactions() {
         </div>
       </section>
 
-      {/* Guaranteed Elements */}
+      {/* Key Features */}
       <section style={{ marginBottom: 60 }}>
         <h2 style={{ fontSize: "2rem", marginBottom: 20, display: "flex", alignItems: "center", gap: 10 }}>
-          🔐 Guaranteed Elements
+          🔐 Key Features
         </h2>
         <div
           style={{

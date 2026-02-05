@@ -11,8 +11,11 @@ export default function Home() {
         <h2 style={{ fontSize: "1.5rem", color: "#666", marginBottom: 40, fontWeight: "normal" }}>
           Secure escrow & milestone-based transaction platform
         </h2>
-        <p style={{ fontSize: "1.2rem", color: "#555", maxWidth: 700, margin: "0 auto 50px", lineHeight: 1.6 }}>
-          Subscription-based escrow infrastructure for global digital and real-world transactions.
+        <p style={{ fontSize: "1.2rem", color: "#555", maxWidth: 700, margin: "0 auto 30px", lineHeight: 1.6 }}>
+          Subscription-based escrow & milestone transaction platform.
+        </p>
+        <p style={{ fontSize: "1rem", color: "#666", maxWidth: 700, margin: "0 auto 50px", lineHeight: 1.6 }}>
+          Payments are processed by third-party payment providers.
         </p>
 
         {/* CTA Buttons */}

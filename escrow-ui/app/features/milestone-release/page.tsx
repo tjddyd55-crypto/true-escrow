@@ -180,7 +180,7 @@ export default function MilestoneRelease() {
             ③ Partial Payment
           </h3>
           <ul style={{ fontSize: "1.1rem", color: "#555", lineHeight: 1.8, paddingLeft: 25 }}>
-            <li style={{ marginBottom: 10 }}>Upon approval, only that amount is paid</li>
+            <li style={{ marginBottom: 10 }}>Funds are released after milestone completion and approval</li>
             <li>Remaining funds continue to be held in escrow</li>
           </ul>
         </div>
@@ -196,10 +196,10 @@ export default function MilestoneRelease() {
         </div>
       </section>
 
-      {/* Why Transparency Is Guaranteed */}
+      {/* Why Transparency Is Maintained */}
       <section style={{ marginBottom: 60 }}>
         <h2 style={{ fontSize: "2rem", marginBottom: 20, display: "flex", alignItems: "center", gap: 10 }}>
-          🔐 Why Transparency Is Guaranteed
+          🔐 Why Transparency Is Maintained
         </h2>
         <div
           style={{

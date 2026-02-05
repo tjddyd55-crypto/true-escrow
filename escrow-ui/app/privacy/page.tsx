@@ -51,13 +51,11 @@ export default function Privacy() {
       <section style={{ marginBottom: 40 }}>
         <h2 style={{ fontSize: "1.8rem", marginBottom: 15 }}>3. Third-Party Services</h2>
         <p style={{ fontSize: "1.1rem", color: "#555", lineHeight: 1.8, marginBottom: 15 }}>
-          <strong>Payments are handled by third-party payment providers.</strong> Personal data
-          is not shared with third parties except for payment processing purposes and as required
-          by law.
+          <strong>Payments are processed by third-party payment providers.</strong> We do not store or directly process payment card information.
         </p>
         <p style={{ fontSize: "1.1rem", color: "#555", lineHeight: 1.8 }}>
-          We work with trusted payment processors that comply with industry-standard security
-          and privacy regulations.
+          Personal data is not shared with third parties except for payment processing purposes and as required by law.
+          We work with trusted payment processors that comply with industry-standard security and privacy regulations.
         </p>
       </section>
 

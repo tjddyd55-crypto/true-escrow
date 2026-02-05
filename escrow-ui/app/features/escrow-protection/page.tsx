@@ -86,7 +86,7 @@ export default function EscrowProtection() {
           <ul style={{ fontSize: "1.1rem", color: "#555", lineHeight: 1.8, paddingLeft: 25 }}>
             <li style={{ marginBottom: 10 }}>Funds are held in neutral escrow status</li>
             <li style={{ marginBottom: 10 }}>Neither party can access funds independently</li>
-            <li>Automatic protection status maintained in case of disputes</li>
+            <li>Protection status maintained in case of disputes</li>
           </ul>
         </div>
 
