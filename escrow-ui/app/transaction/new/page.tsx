@@ -12,7 +12,7 @@ interface Template {
 
 export default function NewTransactionPage() {
   const router = useRouter();
-  const { t } = useI18n();
+  const { t, lang, setLang } = useI18n();
   const [templates, setTemplates] = useState<Template[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null);
@@ -86,9 +86,36 @@ export default function NewTransactionPage() {
 
   return (
     <main style={{ padding: "60px 20px", maxWidth: 800, margin: "0 auto" }}>
-      <h1 style={{ fontSize: "3rem", marginBottom: 20, textAlign: "center" }}>
-        {t.slogan}
-      </h1>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+        <h1 style={{ fontSize: "3rem", marginBottom: 0, textAlign: "left", flex: 1 }}>
+          {t.slogan}
+        </h1>
+        <div style={{ display: "flex", gap: 12, alignItems: "center", fontSize: "0.9rem" }}>
+          <span
+            onClick={() => setLang("en")}
+            style={{
+              cursor: "pointer",
+              color: lang === "en" ? "#0070f3" : "#666",
+              fontWeight: lang === "en" ? "600" : "400",
+              textDecoration: lang === "en" ? "underline" : "none",
+            }}
+          >
+            EN
+          </span>
+          <span style={{ color: "#ccc" }}>|</span>
+          <span
+            onClick={() => setLang("ko")}
+            style={{
+              cursor: "pointer",
+              color: lang === "ko" ? "#0070f3" : "#666",
+              fontWeight: lang === "ko" ? "600" : "400",
+              textDecoration: lang === "ko" ? "underline" : "none",
+            }}
+          >
+            KO
+          </span>
+        </div>
+      </div>
 
       <div style={{ marginBottom: 40 }}>
         <h2 style={{ fontSize: "1.5rem", marginBottom: 20 }}>{t.selectTemplate}</h2>
