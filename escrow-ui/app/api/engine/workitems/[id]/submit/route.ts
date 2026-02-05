@@ -3,10 +3,11 @@ import * as store from "@/lib/transaction-engine/store";
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const item = store.submitWorkItem(params.id);
+    const { id } = await params;
+    const item = store.submitWorkItem(id);
     return NextResponse.json({ ok: true, data: item });
   } catch (error: any) {
     return NextResponse.json({ ok: false, error: error.message }, { status: 400 });

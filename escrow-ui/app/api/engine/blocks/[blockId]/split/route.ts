@@ -3,11 +3,12 @@ import * as store from "@/lib/transaction-engine/store";
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { blockId: string } }
+  { params }: { params: Promise<{ blockId: string }> }
 ) {
   try {
+    const { blockId } = await params;
     const body = await request.json();
-    const result = store.splitBlock(params.blockId, body.splitDay);
+    const result = store.splitBlock(blockId, body.splitDay);
     return NextResponse.json({ ok: true, data: result });
   } catch (error: any) {
     return NextResponse.json({ ok: false, error: error.message }, { status: 400 });

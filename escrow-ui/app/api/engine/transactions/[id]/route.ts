@@ -3,10 +3,11 @@ import * as store from "@/lib/transaction-engine/store";
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const transaction = store.getTransaction(params.id);
+    const { id } = await params;
+    const transaction = store.getTransaction(id);
     if (!transaction) {
       return NextResponse.json({ ok: false, error: "Transaction not found" }, { status: 404 });
     }
@@ -29,11 +30,12 @@ export async function GET(
 
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const body = await request.json();
-    const transaction = store.getTransaction(params.id);
+    const transaction = store.getTransaction(id);
     if (!transaction) {
       return NextResponse.json({ ok: false, error: "Transaction not found" }, { status: 404 });
     }
@@ -47,7 +49,7 @@ export async function PATCH(
     if (body.description !== undefined) transaction.description = body.description;
     
     // Save updated graph
-    const blocks = store.getBlocks(params.id);
+    const blocks = store.getBlocks(id);
     const graph = {
       transaction,
       blocks,

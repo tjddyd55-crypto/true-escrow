@@ -3,9 +3,10 @@ import * as store from "@/lib/transaction-engine/store";
 
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const body = await request.json();
     
     // Parse dueDates if string
@@ -13,7 +14,7 @@ export async function PATCH(
       body.dueDates = body.dueDates.split(",").map((d: string) => parseInt(d.trim())).filter((n: number) => !isNaN(n));
     }
     
-    const rule = store.updateWorkRule(params.id, body);
+    const rule = store.updateWorkRule(id, body);
     return NextResponse.json({ ok: true, data: rule });
   } catch (error: any) {
     return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
@@ -22,10 +23,11 @@ export async function PATCH(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    store.deleteWorkRule(params.id);
+    const { id } = await params;
+    store.deleteWorkRule(id);
     return NextResponse.json({ ok: true });
   } catch (error: any) {
     return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
