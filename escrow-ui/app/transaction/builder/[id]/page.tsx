@@ -248,6 +248,60 @@ export default function TransactionBuilderPage() {
     }
   }
 
+  async function addApprover(blockId: string, role: "BUYER" | "SELLER" | "VERIFIER", displayName: string, required: boolean) {
+    if (!graph || graph.transaction.status !== "DRAFT") return;
+
+    try {
+      const res = await fetch(`/api/engine/blocks/${blockId}/approvers`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          role,
+          userId: displayName,
+          displayName,
+          required,
+        }),
+      });
+      if (res.ok) {
+        fetchData();
+      }
+    } catch (error) {
+      console.error("Failed to add approver:", error);
+    }
+  }
+
+  async function deleteApprover(approverId: string, blockId: string) {
+    if (!graph || graph.transaction.status !== "DRAFT") return;
+
+    try {
+      const res = await fetch(`/api/engine/blocks/${blockId}/approvers/${approverId}`, {
+        method: "DELETE",
+      });
+      if (res.ok) {
+        fetchData();
+      }
+    } catch (error) {
+      console.error("Failed to delete approver:", error);
+    }
+  }
+
+  async function updateApprover(approverId: string, blockId: string, patch: { required?: boolean; role?: string; userId?: string }) {
+    if (!graph || graph.transaction.status !== "DRAFT") return;
+
+    try {
+      const res = await fetch(`/api/engine/blocks/${blockId}/approvers/${approverId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...patch, blockId }),
+      });
+      if (res.ok) {
+        fetchData();
+      }
+    } catch (error) {
+      console.error("Failed to update approver:", error);
+    }
+  }
+
   if (loading) {
     return <div style={{ padding: 40 }}>Loading...</div>;
   }
