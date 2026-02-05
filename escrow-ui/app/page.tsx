@@ -63,24 +63,93 @@ export default function Home() {
             marginTop: 40,
           }}
         >
-          <div style={{ padding: 30, border: "1px solid #e0e0e0", borderRadius: 8 }}>
+          <a
+            href="/features/escrow-protection"
+            style={{
+              textDecoration: "none",
+              color: "inherit",
+              display: "block",
+              padding: 30,
+              border: "1px solid #e0e0e0",
+              borderRadius: 8,
+              transition: "all 0.2s",
+              cursor: "pointer",
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.borderColor = "#0070f3";
+              e.currentTarget.style.boxShadow = "0 4px 12px rgba(0, 112, 243, 0.1)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.borderColor = "#e0e0e0";
+              e.currentTarget.style.boxShadow = "none";
+            }}
+          >
             <h3 style={{ fontSize: "1.3rem", marginBottom: 15 }}>🔒 Escrow-based payment protection</h3>
             <p style={{ color: "#666", lineHeight: 1.6 }}>
               Funds are securely held in escrow until transaction milestones are completed and verified.
             </p>
-          </div>
-          <div style={{ padding: 30, border: "1px solid #e0e0e0", borderRadius: 8 }}>
+            <p style={{ color: "#0070f3", fontSize: "0.9rem", marginTop: 15, fontWeight: "600" }}>
+              Learn more →
+            </p>
+          </a>
+          <a
+            href="/features/milestone-release"
+            style={{
+              textDecoration: "none",
+              color: "inherit",
+              display: "block",
+              padding: 30,
+              border: "1px solid #e0e0e0",
+              borderRadius: 8,
+              transition: "all 0.2s",
+              cursor: "pointer",
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.borderColor = "#0070f3";
+              e.currentTarget.style.boxShadow = "0 4px 12px rgba(0, 112, 243, 0.1)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.borderColor = "#e0e0e0";
+              e.currentTarget.style.boxShadow = "none";
+            }}
+          >
             <h3 style={{ fontSize: "1.3rem", marginBottom: 15 }}>📋 Milestone-driven fund release</h3>
             <p style={{ color: "#666", lineHeight: 1.6 }}>
               Release funds incrementally as project milestones are met, ensuring fair and transparent transactions.
             </p>
-          </div>
-          <div style={{ padding: 30, border: "1px solid #e0e0e0", borderRadius: 8 }}>
+            <p style={{ color: "#0070f3", fontSize: "0.9rem", marginTop: 15, fontWeight: "600" }}>
+              Learn more →
+            </p>
+          </a>
+          <a
+            href="/features/global-transactions"
+            style={{
+              textDecoration: "none",
+              color: "inherit",
+              display: "block",
+              padding: 30,
+              border: "1px solid #e0e0e0",
+              borderRadius: 8,
+              transition: "all 0.2s",
+              cursor: "pointer",
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.borderColor = "#0070f3";
+              e.currentTarget.style.boxShadow = "0 4px 12px rgba(0, 112, 243, 0.1)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.borderColor = "#e0e0e0";
+              e.currentTarget.style.boxShadow = "none";
+            }}
+          >
             <h3 style={{ fontSize: "1.3rem", marginBottom: 15 }}>🌍 Built for global transactions</h3>
             <p style={{ color: "#666", lineHeight: 1.6 }}>
               Designed to support cross-border deals, digital services, and real-world asset transactions worldwide.
             </p>
-          </div>
+            <p style={{ color: "#0070f3", fontSize: "0.9rem", marginTop: 15, fontWeight: "600" }}>
+              Learn more →
+            </p>
+          </a>
         </div>
       </section>
 
