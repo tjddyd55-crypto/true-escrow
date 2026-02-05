@@ -518,6 +518,21 @@ export function addBlockApprover(approver: Omit<BlockApprover, "id">): BlockAppr
   return newApprover;
 }
 
+export function updateBlockApprover(approverId: string, patch: Partial<Omit<BlockApprover, "id" | "blockId">>): BlockApprover {
+  const approver = blockApprovers.find((a) => a.id === approverId);
+  if (!approver) {
+    throw new Error("Approver not found");
+  }
+  const block = blocks.find((b) => b.id === approver.blockId);
+  if (!block || !isDraft(block.transactionId)) {
+    throw new Error("Approvers can only be updated in DRAFT status");
+  }
+  
+  Object.assign(approver, patch);
+  saveToFile();
+  return approver;
+}
+
 export function deleteBlockApprover(approverId: string): void {
   const approver = blockApprovers.find((a) => a.id === approverId);
   if (!approver) {

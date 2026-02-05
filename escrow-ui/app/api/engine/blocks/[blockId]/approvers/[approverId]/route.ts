@@ -22,17 +22,13 @@ export async function PATCH(
     const { approverId } = await params;
     const body = await request.json();
     
-    // Update approver (find and update in store)
-    const approvers = store.getBlockApprovers(body.blockId || "");
-    const approver = approvers.find((a) => a.id === approverId);
-    if (!approver) {
-      return NextResponse.json({ ok: false, error: "Approver not found" }, { status: 404 });
-    }
+    const approver = store.updateBlockApprover(approverId, {
+      required: body.required,
+      role: body.role,
+      userId: body.userId,
+    });
     
-    // Since we don't have updateBlockApprover, we'll delete and recreate
-    // But for MVP, we'll just update the required field if possible
-    // For now, return the approver with updated fields (client-side will handle)
-    return NextResponse.json({ ok: true, data: { ...approver, ...body } });
+    return NextResponse.json({ ok: true, data: approver });
   } catch (error: any) {
     return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
   }

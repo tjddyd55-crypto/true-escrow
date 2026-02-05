@@ -501,25 +501,132 @@ export default function TransactionBuilderPage() {
                     </div>
 
                     {/* Approval Policy */}
-                    {isDraft && (
-                      <div style={{ marginBottom: 15, padding: 10, backgroundColor: "#f8f9fa", borderRadius: 4 }}>
-                        <label style={{ display: "block", marginBottom: 5, fontSize: "0.9rem", fontWeight: "600" }}>
-                          Approval Policy:
-                        </label>
-                        <select
-                          value={policy?.type || "SINGLE"}
-                          onChange={(e) => {
-                            // In real implementation, update policy
-                          }}
-                          style={{ padding: 4, border: "1px solid #e0e0e0", borderRadius: 4, fontSize: "0.9rem" }}
-                        >
-                          <option value="SINGLE">SINGLE</option>
-                          <option value="ALL">ALL</option>
-                          <option value="ANY">ANY</option>
-                          <option value="THRESHOLD">THRESHOLD</option>
-                        </select>
+                    <div style={{ marginBottom: 15, padding: 10, backgroundColor: "#f8f9fa", borderRadius: 4 }}>
+                      <label style={{ display: "block", marginBottom: 5, fontSize: "0.9rem", fontWeight: "600" }}>
+                        Approval Policy:
+                      </label>
+                      <select
+                        value={policy?.type || "SINGLE"}
+                        onChange={(e) => {
+                          // In real implementation, update policy
+                        }}
+                        disabled={!isDraft}
+                        style={{
+                          padding: 4,
+                          border: "1px solid #e0e0e0",
+                          borderRadius: 4,
+                          fontSize: "0.9rem",
+                          backgroundColor: isDraft ? "white" : "#f0f0f0",
+                          cursor: isDraft ? "pointer" : "not-allowed",
+                        }}
+                      >
+                        <option value="SINGLE">SINGLE</option>
+                        <option value="ALL">ALL</option>
+                        <option value="ANY">ANY</option>
+                        <option value="THRESHOLD">THRESHOLD</option>
+                      </select>
+                      {!isDraft && (
+                        <p style={{ margin: "5px 0 0 0", fontSize: "0.8rem", color: "#666" }}>
+                          Locked after activation
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Approvers */}
+                    <div style={{ marginBottom: 15, padding: 10, backgroundColor: "#f8f9fa", borderRadius: 4 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                        <label style={{ fontSize: "0.9rem", fontWeight: "600" }}>Approvers:</label>
+                        {isDraft && (
+                          <button
+                            onClick={() => {
+                              const role = prompt("Enter role (BUYER/SELLER/VERIFIER):", "VERIFIER");
+                              const displayName = prompt("Enter display name:", "Verifier A");
+                              if (role && displayName && ["BUYER", "SELLER", "VERIFIER"].includes(role.toUpperCase())) {
+                                addApprover(block.id, role.toUpperCase() as any, displayName, true);
+                              }
+                            }}
+                            style={{
+                              padding: "4px 8px",
+                              backgroundColor: "#6c5ce7",
+                              color: "white",
+                              border: "none",
+                              borderRadius: 4,
+                              cursor: "pointer",
+                              fontSize: "0.85rem",
+                            }}
+                          >
+                            + Add Approver
+                          </button>
+                        )}
                       </div>
-                    )}
+                      {approvers.length === 0 ? (
+                        <p style={{ fontSize: "0.85rem", color: "#666", fontStyle: "italic" }}>No approvers yet</p>
+                      ) : (
+                        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                          {approvers.map((approver) => (
+                            <div
+                              key={approver.id}
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 10,
+                                padding: 8,
+                                backgroundColor: "white",
+                                borderRadius: 4,
+                                border: "1px solid #e0e0e0",
+                              }}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={approver.required}
+                                onChange={(e) => {
+                                  if (isDraft) {
+                                    updateApprover(approver.id, block.id, { required: e.target.checked });
+                                  }
+                                }}
+                                disabled={!isDraft}
+                                style={{ cursor: isDraft ? "pointer" : "not-allowed" }}
+                              />
+                              <span style={{ fontSize: "0.9rem", fontWeight: "600", minWidth: 100 }}>
+                                {approver.role}
+                              </span>
+                              <span style={{ fontSize: "0.85rem", color: "#666", flex: 1 }}>
+                                {approver.userId || "Unnamed"}
+                              </span>
+                              {approver.required && (
+                                <span style={{ fontSize: "0.75rem", color: "#e74c3c", fontWeight: "600" }}>
+                                  (required)
+                                </span>
+                              )}
+                              {!approver.required && (
+                                <span style={{ fontSize: "0.75rem", color: "#666" }}>(optional)</span>
+                              )}
+                              {isDraft && (
+                                <button
+                                  onClick={() => deleteApprover(approver.id, block.id)}
+                                  style={{
+                                    padding: "2px 6px",
+                                    backgroundColor: "#e74c3c",
+                                    color: "white",
+                                    border: "none",
+                                    borderRadius: 4,
+                                    cursor: "pointer",
+                                    fontSize: "0.75rem",
+                                  }}
+                                >
+                                  Remove
+                                </button>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {!isDraft && approvers.length > 0 && (
+                        <p style={{ margin: "10px 0 0 0", fontSize: "0.8rem", color: "#666" }}>
+                          Locked after activation
+                        </p>
+                      )}
+                    </div>
 
                     {/* Work Rules */}
                     <div style={{ marginBottom: 15 }}>
