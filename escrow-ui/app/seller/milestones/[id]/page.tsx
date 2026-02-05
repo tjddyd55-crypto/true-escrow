@@ -26,6 +26,12 @@ interface MilestoneFile {
   uploaderRole: string;
 }
 
+type UploadFile = {
+  name: string;
+  size: number;
+  type: string;
+};
+
 export default function SellerMilestonePage() {
   const params = useParams();
   const transactionId = params.id as string;
@@ -60,7 +66,7 @@ export default function SellerMilestonePage() {
     }
   }
 
-  async function handleFileUpload(milestoneId: string, file: globalThis.File) {
+  async function handleFileUpload(milestoneId: string, file: UploadFile) {
     setUploading(milestoneId);
     try {
       const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080";
