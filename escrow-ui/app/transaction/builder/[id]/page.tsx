@@ -815,7 +815,7 @@ export default function TransactionBuilderPage() {
                               fontWeight: "600",
                             }}
                           >
-                            Approve Block
+                            {t.approveBlock}
                           </button>
                         )}
                       </div>
@@ -828,7 +828,7 @@ export default function TransactionBuilderPage() {
 
           {/* Timeline Preview */}
           <div style={{ marginBottom: 40 }}>
-            <h2 style={{ fontSize: "1.8rem", marginBottom: 20 }}>Timeline Preview</h2>
+            <h2 style={{ fontSize: "1.8rem", marginBottom: 20 }}>{t.timeline}</h2>
             <div style={{ border: "1px solid #e0e0e0", borderRadius: 8, padding: 20 }}>
               {graph.blocks.length === 0 ? (
                 <p style={{ color: "#666", textAlign: "center" }}>No blocks yet</p>
@@ -869,7 +869,7 @@ export default function TransactionBuilderPage() {
 
         {/* Activity Log */}
         <div>
-          <h3 style={{ fontSize: "1.2rem", marginBottom: 15 }}>Activity Log</h3>
+          <h3 style={{ fontSize: "1.2rem", marginBottom: 15 }}>{t.activityLog}</h3>
           <div style={{ border: "1px solid #e0e0e0", borderRadius: 8, padding: 15, maxHeight: "600px", overflowY: "auto" }}>
             {logs.length === 0 ? (
               <p style={{ color: "#666", fontSize: "0.9rem" }}>No activity yet</p>
