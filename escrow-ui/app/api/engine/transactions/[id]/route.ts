@@ -7,12 +7,18 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
+    console.log("[API] GET /api/engine/transactions/[id]", id);
+    
     const transaction = store.getTransaction(id);
     if (!transaction) {
+      console.error("[API] Transaction not found:", id);
       return NextResponse.json({ ok: false, error: "Transaction not found" }, { status: 404 });
     }
     
+    console.log("[API] Transaction found:", transaction.id);
     const blocks = store.getBlocks(id);
+    console.log("[API] Blocks found:", blocks.length);
+    
     const graph = {
       transaction,
       blocks,
@@ -22,8 +28,16 @@ export async function GET(
       workItems: blocks.flatMap((b) => store.getWorkItemsByBlock(b.id)),
     };
     
+    console.log("[API] Returning graph:", {
+      transactionId: graph.transaction.id,
+      blocks: graph.blocks.length,
+      workRules: graph.workRules.length,
+      workItems: graph.workItems.length,
+    });
+    
     return NextResponse.json({ ok: true, data: graph });
   } catch (error: any) {
+    console.error("[API] Error fetching transaction:", error);
     return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
   }
 }

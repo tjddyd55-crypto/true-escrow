@@ -61,12 +61,16 @@ export default function NewTransactionPage() {
         body: JSON.stringify(payload),
       });
 
-      if (res.ok) {
-        const data = await res.json();
-        router.push(`/transaction/builder/${data.data.id}`);
+      const responseData = await res.json();
+      console.log("[Frontend] Transaction creation response:", responseData);
+
+      if (res.ok && responseData.ok && responseData.data && responseData.data.id) {
+        const transactionId = responseData.data.id;
+        console.log("[Frontend] Redirecting to builder:", transactionId);
+        router.push(`/transaction/builder/${transactionId}`);
       } else {
-        const error = await res.json();
-        alert(error.error || "Failed to create transaction");
+        console.error("[Frontend] Transaction creation failed:", responseData);
+        alert(responseData.error || "Failed to create transaction");
       }
     } catch (error) {
       console.error("Failed to create transaction:", error);

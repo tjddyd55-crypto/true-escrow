@@ -30,6 +30,7 @@ export default function TransactionBuilderPage() {
 
   async function fetchData() {
     try {
+      console.log("[Frontend] Fetching transaction:", transactionId);
       const [txRes, logsRes] = await Promise.all([
         fetch(`/api/engine/transactions/${transactionId}`),
         fetch(`/api/engine/logs/${transactionId}`),
@@ -37,14 +38,22 @@ export default function TransactionBuilderPage() {
 
       if (txRes.ok) {
         const txData = await txRes.json();
-        setGraph(txData.data);
+        console.log("[Frontend] Transaction data received:", txData);
+        if (txData.ok && txData.data) {
+          setGraph(txData.data);
+        } else {
+          console.error("[Frontend] Invalid transaction data:", txData);
+        }
+      } else {
+        const errorData = await txRes.json();
+        console.error("[Frontend] Failed to fetch transaction:", errorData);
       }
       if (logsRes.ok) {
         const logsData = await logsRes.json();
         setLogs(logsData.data || []);
       }
     } catch (error) {
-      console.error("Failed to fetch data:", error);
+      console.error("[Frontend] Failed to fetch data:", error);
     } finally {
       setLoading(false);
     }
