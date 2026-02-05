@@ -479,9 +479,9 @@ export default function TransactionBuilderPage() {
                           </div>
                         )}
                         <div style={{ display: "flex", gap: 15, alignItems: "center", marginBottom: 10 }}>
-                          {isDraft ? (
+                          {isDraft && !block.isActive ? (
                             <>
-                              <span>Day</span>
+                              <span>{t.day}</span>
                               <input
                                 type="number"
                                 value={block.startDay}
@@ -498,7 +498,7 @@ export default function TransactionBuilderPage() {
                             </>
                           ) : (
                             <span style={{ fontSize: "0.9rem", color: "#666" }}>
-                              Period: Day {block.startDay} – Day {block.endDay}
+                              {t.period}: {t.day} {block.startDay} – {t.day} {block.endDay}
                             </span>
                           )}
                         </div>
