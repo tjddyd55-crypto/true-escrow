@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
+import { useI18n } from "@/lib/i18n/provider";
 import type {
   TransactionGraph,
   Transaction,
@@ -16,6 +17,7 @@ import type {
 export default function TransactionBuilderPage() {
   const params = useParams();
   const transactionId = params.id as string;
+  const { t, lang, setLang } = useI18n();
   const [graph, setGraph] = useState<TransactionGraph | null>(null);
   const [logs, setLogs] = useState<ActivityLog[]>([]);
   const [loading, setLoading] = useState(true);
@@ -340,7 +342,7 @@ export default function TransactionBuilderPage() {
             <textarea
               value={graph.transaction.description || ""}
               onChange={(e) => updateTransaction({ description: e.target.value })}
-              placeholder="Transaction description"
+              placeholder={t.transactionDescription}
               rows={2}
               style={{ width: "100%", padding: 8, border: "1px solid #e0e0e0", borderRadius: 4, marginBottom: 10 }}
             />
@@ -352,7 +354,7 @@ export default function TransactionBuilderPage() {
           </>
         )}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 15 }}>
-          <span style={{ color: "#666" }}>Overall Duration: {overallDuration}</span>
+          <span style={{ color: "#666" }}>{t.overallDuration}: {overallDuration}</span>
           <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
             <span
               style={{
@@ -379,7 +381,7 @@ export default function TransactionBuilderPage() {
                   fontWeight: "600",
                 }}
               >
-                Activate Transaction
+                {t.activateTransaction}
               </button>
             )}
           </div>
@@ -392,7 +394,7 @@ export default function TransactionBuilderPage() {
           {/* Blocks */}
           <div style={{ marginBottom: 40 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
-              <h2 style={{ fontSize: "1.8rem" }}>Blocks</h2>
+              <h2 style={{ fontSize: "1.8rem" }}>{t.blocks}</h2>
               {isDraft && (
                 <button
                   onClick={addBlock}
@@ -406,7 +408,7 @@ export default function TransactionBuilderPage() {
                     fontWeight: "600",
                   }}
                 >
-                  + Add Block
+                  {t.addBlock}
                 </button>
               )}
             </div>
@@ -479,7 +481,7 @@ export default function TransactionBuilderPage() {
                             fontWeight: "600",
                           }}
                         >
-                          {block.isActive ? "Active" : "Locked"}
+                          {block.isActive ? t.active : t.locked}
                         </span>
                         {isDraft && graph.blocks.length > 1 && (
                           <button
@@ -494,7 +496,7 @@ export default function TransactionBuilderPage() {
                               fontSize: "0.85rem",
                             }}
                           >
-                            Delete
+                            {t.delete}
                           </button>
                         )}
                       </div>
@@ -527,7 +529,7 @@ export default function TransactionBuilderPage() {
                       </select>
                       {!isDraft && (
                         <p style={{ margin: "5px 0 0 0", fontSize: "0.8rem", color: "#666" }}>
-                          Locked after activation
+                          {t.lockedAfterActivation}
                         </p>
                       )}
                     </div>
@@ -535,12 +537,12 @@ export default function TransactionBuilderPage() {
                     {/* Approvers */}
                     <div style={{ marginBottom: 15, padding: 10, backgroundColor: "#f8f9fa", borderRadius: 4 }}>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-                        <label style={{ fontSize: "0.9rem", fontWeight: "600" }}>Approvers:</label>
+                        <label style={{ fontSize: "0.9rem", fontWeight: "600" }}>{t.approvers}:</label>
                         {isDraft && (
                           <button
                             onClick={() => {
-                              const role = prompt("Enter role (BUYER/SELLER/VERIFIER):", "VERIFIER");
-                              const displayName = prompt("Enter display name:", "Verifier A");
+                              const role = prompt(t.enterRole, "VERIFIER");
+                              const displayName = prompt(t.enterDisplayName, "Verifier A");
                               if (role && displayName && ["BUYER", "SELLER", "VERIFIER"].includes(role.toUpperCase())) {
                                 addApprover(block.id, role.toUpperCase() as any, displayName, true);
                               }
@@ -555,12 +557,12 @@ export default function TransactionBuilderPage() {
                               fontSize: "0.85rem",
                             }}
                           >
-                            + Add Approver
+                            {t.addApprover}
                           </button>
                         )}
                       </div>
                       {approvers.length === 0 ? (
-                        <p style={{ fontSize: "0.85rem", color: "#666", fontStyle: "italic" }}>No approvers yet</p>
+                        <p style={{ fontSize: "0.85rem", color: "#666", fontStyle: "italic" }}>{t.noApproversYet}</p>
                       ) : (
                         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                           {approvers.map((approver) => (
@@ -595,11 +597,11 @@ export default function TransactionBuilderPage() {
                               </span>
                               {approver.required && (
                                 <span style={{ fontSize: "0.75rem", color: "#e74c3c", fontWeight: "600" }}>
-                                  (required)
+                                  {t.required}
                                 </span>
                               )}
                               {!approver.required && (
-                                <span style={{ fontSize: "0.75rem", color: "#666" }}>(optional)</span>
+                                <span style={{ fontSize: "0.75rem", color: "#666" }}>{t.optional}</span>
                               )}
                               {isDraft && (
                                 <button
@@ -614,7 +616,7 @@ export default function TransactionBuilderPage() {
                                     fontSize: "0.75rem",
                                   }}
                                 >
-                                  Remove
+                                  {t.remove}
                                 </button>
                               )}
                             </div>
@@ -623,7 +625,7 @@ export default function TransactionBuilderPage() {
                       )}
                       {!isDraft && approvers.length > 0 && (
                         <p style={{ margin: "10px 0 0 0", fontSize: "0.8rem", color: "#666" }}>
-                          Locked after activation
+                          {t.lockedAfterActivation}
                         </p>
                       )}
                     </div>
@@ -631,7 +633,7 @@ export default function TransactionBuilderPage() {
                     {/* Work Rules */}
                     <div style={{ marginBottom: 15 }}>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-                        <h4 style={{ margin: 0, fontSize: "1rem" }}>Work Rules</h4>
+                        <h4 style={{ margin: 0, fontSize: "1rem" }}>{t.workRules}</h4>
                         {isDraft && (
                           <button
                             onClick={() => addWorkRule(block.id)}
@@ -645,7 +647,7 @@ export default function TransactionBuilderPage() {
                               fontSize: "0.85rem",
                             }}
                           >
-                            + Add Rule
+                            {t.addRule}
                           </button>
                         )}
                       </div>
@@ -666,7 +668,7 @@ export default function TransactionBuilderPage() {
                                 type="text"
                                 value={rule.workType}
                                 onChange={(e) => updateWorkRule(rule.id, { workType: e.target.value })}
-                                placeholder="Work Type"
+                                placeholder={t.workType}
                                 style={{ width: "100%", padding: 4, marginBottom: 5, border: "1px solid #e0e0e0", borderRadius: 4 }}
                               />
                               <div style={{ display: "flex", gap: 10, marginBottom: 5 }}>
@@ -674,7 +676,7 @@ export default function TransactionBuilderPage() {
                                   type="number"
                                   value={rule.quantity}
                                   onChange={(e) => updateWorkRule(rule.id, { quantity: parseInt(e.target.value) })}
-                                  placeholder="Quantity"
+                                  placeholder={t.quantity}
                                   style={{ width: 80, padding: 4, border: "1px solid #e0e0e0", borderRadius: 4 }}
                                 />
                                 <select
@@ -695,7 +697,7 @@ export default function TransactionBuilderPage() {
                                   const dates = e.target.value.split(",").map((d) => parseInt(d.trim())).filter((n) => !isNaN(n));
                                   updateWorkRule(rule.id, { dueDates: dates });
                                 }}
-                                placeholder="Due Days (comma-separated)"
+                                placeholder={t.dueDates}
                                 style={{ width: "100%", padding: 4, border: "1px solid #e0e0e0", borderRadius: 4 }}
                               />
                               <button
@@ -711,7 +713,7 @@ export default function TransactionBuilderPage() {
                                   fontSize: "0.8rem",
                                 }}
                               >
-                                Delete
+                                {t.delete}
                               </button>
                             </>
                           ) : (
@@ -729,7 +731,7 @@ export default function TransactionBuilderPage() {
                     {/* Work Items (Active Block Only) */}
                     {block.isActive && blockItems.length > 0 && (
                       <div style={{ marginTop: 15, padding: 15, backgroundColor: "#fff5f5", borderRadius: 4 }}>
-                        <h4 style={{ margin: 0, marginBottom: 10, fontSize: "1rem" }}>Work Items</h4>
+                        <h4 style={{ margin: 0, marginBottom: 10, fontSize: "1rem" }}>{t.workItems}</h4>
                         {blockItems.map((item) => {
                           const rule = graph.workRules.find((r) => r.id === item.workRuleId);
                           return (
@@ -774,7 +776,7 @@ export default function TransactionBuilderPage() {
                                         fontSize: "0.8rem",
                                       }}
                                     >
-                                      Submit
+                                      {t.submit}
                                     </button>
                                   )}
                                   {item.status === "SUBMITTED" && (
@@ -790,7 +792,7 @@ export default function TransactionBuilderPage() {
                                         fontSize: "0.8rem",
                                       }}
                                     >
-                                      Approve
+                                      {t.approve}
                                     </button>
                                   )}
                                 </div>

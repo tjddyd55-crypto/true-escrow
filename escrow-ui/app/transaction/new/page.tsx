@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { useI18n } from "@/lib/i18n/provider";
 
 interface Template {
   id: string;
@@ -11,6 +12,7 @@ interface Template {
 
 export default function NewTransactionPage() {
   const router = useRouter();
+  const { t } = useI18n();
   const [templates, setTemplates] = useState<Template[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null);
@@ -79,17 +81,17 @@ export default function NewTransactionPage() {
   }
 
   if (loading) {
-    return <div style={{ padding: 40 }}>Loading...</div>;
+    return <div style={{ padding: 40 }}>{t.loading}</div>;
   }
 
   return (
     <main style={{ padding: "60px 20px", maxWidth: 800, margin: "0 auto" }}>
       <h1 style={{ fontSize: "3rem", marginBottom: 20, textAlign: "center" }}>
-        Design your transaction.
+        {t.slogan}
       </h1>
 
       <div style={{ marginBottom: 40 }}>
-        <h2 style={{ fontSize: "1.5rem", marginBottom: 20 }}>Select Template</h2>
+        <h2 style={{ fontSize: "1.5rem", marginBottom: 20 }}>{t.selectTemplate}</h2>
         <div style={{ display: "grid", gap: 15 }}>
           <label
             style={{
@@ -148,13 +150,13 @@ export default function NewTransactionPage() {
 
       <div style={{ marginBottom: 30 }}>
         <label style={{ display: "block", marginBottom: 8, fontWeight: "600" }}>
-          Transaction Title *
+          {t.transactionTitle} *
         </label>
         <input
           type="text"
           value={title}
           onChange={(e) => setTitle(e.target.value)}
-          placeholder="Enter transaction title"
+          placeholder={t.transactionTitle}
           style={{
             width: "100%",
             padding: 12,
@@ -167,12 +169,12 @@ export default function NewTransactionPage() {
 
       <div style={{ marginBottom: 30 }}>
         <label style={{ display: "block", marginBottom: 8, fontWeight: "600" }}>
-          Transaction Description
+          {t.transactionDescription}
         </label>
         <textarea
           value={description}
           onChange={(e) => setDescription(e.target.value)}
-          placeholder="Describe your transaction"
+          placeholder={t.transactionDescription}
           rows={4}
           style={{
             width: "100%",
@@ -200,7 +202,7 @@ export default function NewTransactionPage() {
           cursor: !title.trim() ? "not-allowed" : "pointer",
         }}
       >
-        Start Building
+        {t.startBuilding}
       </button>
     </main>
   );
