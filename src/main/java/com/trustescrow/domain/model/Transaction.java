@@ -29,6 +29,16 @@ public class Transaction {
     @Column(nullable = false)
     private String title;
     
+    @Column(columnDefinition = "TEXT")
+    private String description;
+    
+    @Column(nullable = false)
+    private UUID initiatorId;
+    
+    @Column(nullable = false)
+    @Enumerated(EnumType.STRING)
+    private InitiatorRole initiatorRole;
+    
     @Column(nullable = false)
     private UUID buyerId;
     
@@ -46,12 +56,15 @@ public class Transaction {
     private Instant updatedAt;
     
     public enum TransactionStatus {
-        CREATED,
-        ESCROW_SIMULATED,
-        IN_PROGRESS,
-        WAITING_APPROVAL,
-        COMPLETED,
-        PAUSED
+        DRAFT,
+        ACTIVE,
+        PAUSED,
+        COMPLETED
+    }
+    
+    public enum InitiatorRole {
+        BUYER,
+        SELLER
     }
     
     public void updateStatus(TransactionStatus newStatus) {
