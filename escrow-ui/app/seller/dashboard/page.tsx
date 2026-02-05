@@ -38,7 +38,27 @@ export default function SellerDashboard() {
 
       if (res.ok) {
         const data = await res.json();
-        setTransactions(data.data || []);
+        // Fetch milestone details for each transaction
+        const transactionsWithMilestones = await Promise.all(
+          (data.data || []).map(async (tx: Transaction) => {
+            try {
+              const detailRes = await fetch(`${apiBaseUrl}/api/transactions/${tx.id}`, {
+                headers: {
+                  "X-User-Id": "00000000-0000-0000-0000-000000000002",
+                  "X-User-Role": "SELLER",
+                },
+              });
+              if (detailRes.ok) {
+                const detailData = await detailRes.json();
+                return { ...tx, milestones: detailData.data?.milestones || [] };
+              }
+            } catch (err) {
+              console.error(`Failed to fetch details for transaction ${tx.id}:`, err);
+            }
+            return tx;
+          })
+        );
+        setTransactions(transactionsWithMilestones);
       }
     } catch (error) {
       console.error("Failed to fetch transactions:", error);
