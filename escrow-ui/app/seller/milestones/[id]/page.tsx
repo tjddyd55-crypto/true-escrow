@@ -64,16 +64,24 @@ export default function SellerMilestonePage() {
     setUploading(milestoneId);
     try {
       const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080";
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("milestoneId", milestoneId);
+      
+      // Simulated upload - send JSON instead of FormData
+      const uploadData = {
+        milestoneId: milestoneId,
+        fileName: file.name,
+        fileSize: file.size,
+        mimeType: file.type,
+        uploaderRole: "SELLER",
+        simulated: true,
+      };
 
       const res = await fetch(`${apiBaseUrl}/api/files/upload`, {
         method: "POST",
         headers: {
+          "Content-Type": "application/json",
           "X-User-Role": "SELLER",
         },
-        body: formData,
+        body: JSON.stringify(uploadData),
       });
 
       if (res.ok) {

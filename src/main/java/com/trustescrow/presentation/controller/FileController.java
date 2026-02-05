@@ -3,11 +3,11 @@ package com.trustescrow.presentation.controller;
 import com.trustescrow.application.dto.ApiResponse;
 import com.trustescrow.application.service.TransactionService;
 import com.trustescrow.domain.model.MilestoneFile;
+import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 import java.util.Map;
@@ -22,25 +22,34 @@ public class FileController {
     
     private final TransactionService transactionService;
     
+    @Data
+    public static class FileUploadRequest {
+        private UUID milestoneId;
+        private String fileName;
+        private Long fileSize;
+        private String mimeType;
+        private String uploaderRole;
+        private Boolean simulated;
+    }
+    
     @PostMapping("/upload")
     public ResponseEntity<ApiResponse<Object>> uploadFile(
-            @RequestParam("milestoneId") UUID milestoneId,
-            @RequestParam("file") MultipartFile file,
+            @RequestBody FileUploadRequest request,
             @RequestHeader(value = "X-User-Role", required = false) String userRole) {
         
-        MilestoneFile.UploaderRole uploaderRole = "BUYER".equals(userRole) 
+        MilestoneFile.UploaderRole uploaderRole = "BUYER".equals(request.getUploaderRole()) 
             ? MilestoneFile.UploaderRole.BUYER 
             : MilestoneFile.UploaderRole.SELLER;
         
-        // For demo, just save file info (actual file storage would be implemented separately)
-        String fileUrl = "/uploads/" + UUID.randomUUID() + "/" + file.getOriginalFilename();
+        // Simulated upload - generate file URL without actual file storage
+        String fileUrl = "/uploads/" + UUID.randomUUID() + "/" + request.getFileName();
         
         MilestoneFile saved = transactionService.saveFile(
-            milestoneId,
+            request.getMilestoneId(),
             fileUrl,
-            file.getOriginalFilename(),
-            file.getSize(),
-            file.getContentType(),
+            request.getFileName(),
+            request.getFileSize() != null ? request.getFileSize() : 0L,
+            request.getMimeType() != null ? request.getMimeType() : "application/octet-stream",
             uploaderRole
         );
         
