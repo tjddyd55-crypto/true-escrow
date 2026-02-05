@@ -305,11 +305,11 @@ export default function TransactionBuilderPage() {
   }
 
   if (loading) {
-    return <div style={{ padding: 40 }}>Loading...</div>;
+    return <div style={{ padding: 40 }}>{t.loading}</div>;
   }
 
   if (!graph) {
-    return <div style={{ padding: 40 }}>Transaction not found</div>;
+    return <div style={{ padding: 40 }}>{t.transactionNotFound}</div>;
   }
 
   const isDraft = graph.transaction.status === "DRAFT";
@@ -327,7 +327,34 @@ export default function TransactionBuilderPage() {
 
   return (
     <main style={{ padding: "40px 20px", maxWidth: 1400, margin: "0 auto" }}>
-      <h1 style={{ fontSize: "2.5rem", marginBottom: 10 }}>Design your transaction.</h1>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+        <h1 style={{ fontSize: "2.5rem", marginBottom: 0 }}>{t.slogan}</h1>
+        <div style={{ display: "flex", gap: 12, alignItems: "center", fontSize: "0.9rem" }}>
+          <span
+            onClick={() => setLang("en")}
+            style={{
+              cursor: "pointer",
+              color: lang === "en" ? "#0070f3" : "#666",
+              fontWeight: lang === "en" ? "600" : "400",
+              textDecoration: lang === "en" ? "underline" : "none",
+            }}
+          >
+            EN
+          </span>
+          <span style={{ color: "#ccc" }}>|</span>
+          <span
+            onClick={() => setLang("ko")}
+            style={{
+              cursor: "pointer",
+              color: lang === "ko" ? "#0070f3" : "#666",
+              fontWeight: lang === "ko" ? "600" : "400",
+              textDecoration: lang === "ko" ? "underline" : "none",
+            }}
+          >
+            KO
+          </span>
+        </div>
+      </div>
 
       {/* Transaction Header */}
       <div style={{ marginBottom: 30, padding: 20, border: "1px solid #e0e0e0", borderRadius: 8 }}>
