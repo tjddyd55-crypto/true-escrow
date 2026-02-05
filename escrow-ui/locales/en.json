@@ -1,0 +1,14 @@
+{
+  "meta": {
+    "title": "true-escrow | Secure Escrow & Milestone Transaction Platform",
+    "description": "Subscription-based escrow infrastructure for global digital and real-world transactions."
+  },
+  "common": {
+    "home": "Home",
+    "about": "About",
+    "pricing": "Pricing",
+    "contact": "Contact",
+    "terms": "Terms",
+    "privacy": "Privacy"
+  }
+}
