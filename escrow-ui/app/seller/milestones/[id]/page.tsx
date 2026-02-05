@@ -16,10 +16,10 @@ interface Milestone {
   amount: string;
   status: string;
   orderIndex: number;
-  files: File[];
+  files: MilestoneFile[];
 }
 
-interface File {
+interface MilestoneFile {
   id: string;
   fileName: string;
   fileUrl: string;
@@ -60,7 +60,7 @@ export default function SellerMilestonePage() {
     }
   }
 
-  async function handleFileUpload(milestoneId: string, file: File) {
+  async function handleFileUpload(milestoneId: string, file: globalThis.File) {
     setUploading(milestoneId);
     try {
       const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080";
