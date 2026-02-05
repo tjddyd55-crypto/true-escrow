@@ -1,54 +1,81 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+
+interface Template {
+  id: string;
+  title: string;
+  description: string;
+}
 
 export default function NewTransactionPage() {
   const router = useRouter();
+  const [templates, setTemplates] = useState<Template[]>([]);
+  const [loading, setLoading] = useState(true);
   const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
 
-  const templates = [
-    { id: "real-estate", name: "Real Estate" },
-    { id: "vehicle", name: "Vehicle" },
-    { id: "marketing", name: "Marketing / Freelance" },
-    { id: "blank", name: "Blank" },
-  ];
+  useEffect(() => {
+    fetchTemplates();
+  }, []);
+
+  async function fetchTemplates() {
+    try {
+      const res = await fetch("/api/engine/templates");
+      if (res.ok) {
+        const data = await res.json();
+        setTemplates(data.data || []);
+      }
+    } catch (error) {
+      console.error("Failed to fetch templates:", error);
+    } finally {
+      setLoading(false);
+    }
+  }
 
   async function handleCreate() {
-    if (!selectedTemplate || !title.trim()) {
-      alert("Please select a template and enter a title");
+    if (!title.trim()) {
+      alert("Please enter a transaction title");
       return;
     }
 
     try {
-      const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080";
-      const res = await fetch(`${apiBaseUrl}/api/transaction-builder/transactions`, {
+      const payload: any = {
+        title,
+        description,
+        initiatorId: "00000000-0000-0000-0000-000000000001",
+        initiatorRole: "BUYER",
+        buyerId: "00000000-0000-0000-0000-000000000001",
+        sellerId: "00000000-0000-0000-0000-000000000002",
+      };
+
+      if (selectedTemplate && selectedTemplate !== "blank") {
+        payload.templateId = selectedTemplate;
+      }
+
+      const res = await fetch("/api/engine/transactions", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-User-Id": "00000000-0000-0000-0000-000000000001",
-        },
-        body: JSON.stringify({
-          title,
-          description,
-          initiatorRole: "BUYER",
-          buyerId: "00000000-0000-0000-0000-000000000001",
-          sellerId: "00000000-0000-0000-0000-000000000002",
-        }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
       });
 
       if (res.ok) {
         const data = await res.json();
         router.push(`/transaction/builder/${data.data.id}`);
       } else {
-        alert("Failed to create transaction");
+        const error = await res.json();
+        alert(error.error || "Failed to create transaction");
       }
     } catch (error) {
       console.error("Failed to create transaction:", error);
       alert("Error creating transaction");
     }
+  }
+
+  if (loading) {
+    return <div style={{ padding: 40 }}>Loading...</div>;
   }
 
   return (
@@ -60,6 +87,27 @@ export default function NewTransactionPage() {
       <div style={{ marginBottom: 40 }}>
         <h2 style={{ fontSize: "1.5rem", marginBottom: 20 }}>Select Template</h2>
         <div style={{ display: "grid", gap: 15 }}>
+          <label
+            style={{
+              display: "flex",
+              alignItems: "center",
+              padding: 20,
+              border: selectedTemplate === "blank" ? "2px solid #0070f3" : "1px solid #e0e0e0",
+              borderRadius: 8,
+              cursor: "pointer",
+              backgroundColor: selectedTemplate === "blank" ? "#f0f9ff" : "white",
+            }}
+          >
+            <input
+              type="radio"
+              name="template"
+              value="blank"
+              checked={selectedTemplate === "blank"}
+              onChange={(e) => setSelectedTemplate(e.target.value)}
+              style={{ marginRight: 15 }}
+            />
+            <span style={{ fontSize: "1.1rem", fontWeight: "600" }}>Blank</span>
+          </label>
           {templates.map((template) => (
             <label
               key={template.id}
@@ -81,7 +129,14 @@ export default function NewTransactionPage() {
                 onChange={(e) => setSelectedTemplate(e.target.value)}
                 style={{ marginRight: 15 }}
               />
-              <span style={{ fontSize: "1.1rem", fontWeight: "600" }}>{template.name}</span>
+              <div>
+                <div style={{ fontSize: "1.1rem", fontWeight: "600", marginBottom: 4 }}>
+                  {template.title}
+                </div>
+                <div style={{ fontSize: "0.9rem", color: "#666" }}>
+                  {template.description}
+                </div>
+              </div>
             </label>
           ))}
         </div>
@@ -89,7 +144,7 @@ export default function NewTransactionPage() {
 
       <div style={{ marginBottom: 30 }}>
         <label style={{ display: "block", marginBottom: 8, fontWeight: "600" }}>
-          Transaction Title
+          Transaction Title *
         </label>
         <input
           type="text"
@@ -128,17 +183,17 @@ export default function NewTransactionPage() {
 
       <button
         onClick={handleCreate}
-        disabled={!selectedTemplate || !title.trim()}
+        disabled={!title.trim()}
         style={{
           width: "100%",
           padding: 16,
-          backgroundColor: !selectedTemplate || !title.trim() ? "#ccc" : "#0070f3",
+          backgroundColor: !title.trim() ? "#ccc" : "#0070f3",
           color: "white",
           border: "none",
           borderRadius: 4,
           fontSize: "1.1rem",
           fontWeight: "600",
-          cursor: !selectedTemplate || !title.trim() ? "not-allowed" : "pointer",
+          cursor: !title.trim() ? "not-allowed" : "pointer",
         }}
       >
         Start Building
