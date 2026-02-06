@@ -17,13 +17,14 @@ import {
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
+/** Distinct colors per block so "which phase" is obvious at a glance */
 const BLOCK_COLORS = [
-  "#e3f2fd", // blue
-  "#e8f5e9", // green
-  "#fff3e0", // orange
-  "#fce4ec", // pink
-  "#f3e5f5", // purple
-  "#e0f7fa", // cyan
+  "#bbdefb", // blue
+  "#c8e6c9", // green
+  "#ffe0b2", // orange
+  "#f8bbd9", // pink
+  "#e1bee7", // purple
+  "#b2ebf2", // cyan
 ];
 
 type Props = {
@@ -109,54 +110,79 @@ export function TransactionCalendar({ txStartDate, txEndDate, blocks, title }: P
     return `${formatShortRange(cell.seg.startDate, cell.seg.endDate)} (${dur} days)`;
   };
 
+  /** Same segment (block or gap) on prev/next day → hide inner border for continuous bar */
+  const sameSegmentPrev = (date: string, seg: TimelineSegment | undefined) => {
+    if (!seg) return false;
+    const prev = addDays(date, -1);
+    const prevSeg = getSegmentAtDate(segments, prev);
+    if (!prevSeg) return false;
+    if (seg.type === "block" && prevSeg.type === "block") return seg.block.id === prevSeg.block.id;
+    if (seg.type === "gap" && prevSeg.type === "gap") return compareDate(prev, seg.startDate) >= 0;
+    return false;
+  };
+  const sameSegmentNext = (date: string, seg: TimelineSegment | undefined) => {
+    if (!seg) return false;
+    const next = addDays(date, 1);
+    const nextSeg = getSegmentAtDate(segments, next);
+    if (!nextSeg) return false;
+    if (seg.type === "block" && nextSeg.type === "block") return seg.block.id === nextSeg.block.id;
+    if (seg.type === "gap" && nextSeg.type === "gap") return compareDate(next, seg.endDate) <= 0;
+    return false;
+  };
+
   if (monthsInRange.length === 0) return null;
 
   return (
     <div style={{ marginBottom: 24 }}>
       {title && <h3 style={{ fontSize: "1.1rem", marginBottom: 10 }}>{title}</h3>}
 
-      {/* Month header + prev/next */}
+      {/* Month header: "◀ 2026 February ▶" — clear which month, navigate entire tx range */}
       <div
         style={{
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
-          marginBottom: 10,
-          padding: "8px 0",
+          marginBottom: 12,
+          padding: "10px 0",
+          borderBottom: "1px solid #e0e0e0",
         }}
       >
         <button
           type="button"
+          aria-label="Previous month"
           disabled={monthIndex <= 0}
           onClick={() => setMonthIndex((i) => Math.max(0, i - 1))}
           style={{
-            padding: "6px 12px",
+            padding: "8px 14px",
             border: "1px solid #e0e0e0",
-            borderRadius: 4,
+            borderRadius: 6,
             background: monthIndex <= 0 ? "#f5f5f5" : "white",
             cursor: monthIndex <= 0 ? "not-allowed" : "pointer",
-            fontSize: "0.9rem",
+            fontSize: "1rem",
+            fontWeight: "600",
           }}
         >
-          ← Prev
+          ◀
         </button>
-        <span style={{ fontWeight: "600", fontSize: "1rem" }}>
+        <span style={{ fontWeight: "700", fontSize: "1.25rem", color: "#111" }}>
           {formatMonthYear(monthStartIso)}
         </span>
         <button
           type="button"
+          aria-label="Next month"
           disabled={monthIndex >= monthsInRange.length - 1}
           onClick={() => setMonthIndex((i) => Math.min(monthsInRange.length - 1, i + 1))}
           style={{
-            padding: "6px 12px",
+            padding: "8px 14px",
             border: "1px solid #e0e0e0",
-            borderRadius: 4,
+            borderRadius: 6,
             background: monthIndex >= monthsInRange.length - 1 ? "#f5f5f5" : "white",
             cursor: monthIndex >= monthsInRange.length - 1 ? "not-allowed" : "pointer",
-            fontSize: "0.9rem",
+            fontSize: "1rem",
+            fontWeight: "600",
           }}
         >
-          Next →
+          ▶
         </button>
       </div>
 
@@ -200,13 +226,20 @@ export function TransactionCalendar({ txStartDate, txEndDate, blocks, title }: P
                     : "#fafafa";
               const isBlockStart = isBlock && block && cell.date === block.startDate;
               const isBlockEnd = isBlock && block && cell.date === block.endDate;
+              const samePrev = sameSegmentPrev(cell.date, cell.seg);
+              const sameNext = sameSegmentNext(cell.date, cell.seg);
+              const borderLeft = samePrev ? "none" : isGap ? "1px dashed #999" : "1px solid #e0e0e0";
+              const borderRight = sameNext ? "none" : isGap ? "1px dashed #999" : "1px solid #e0e0e0";
               return (
                 <div
                   key={ci}
                   style={{
-                    minHeight: 36,
-                    padding: 2,
-                    border: isGap ? "1px dashed #999" : "1px solid #e0e0e0",
+                    minHeight: 40,
+                    padding: 4,
+                    borderTop: isGap ? "1px dashed #999" : "1px solid #e0e0e0",
+                    borderBottom: isGap ? "1px dashed #999" : "1px solid #e0e0e0",
+                    borderLeft,
+                    borderRight,
                     backgroundColor: bg,
                     fontSize: "0.75rem",
                     display: "flex",
