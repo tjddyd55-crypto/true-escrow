@@ -15,7 +15,6 @@ export const ko = {
   blockTitle: "블록 제목",
   period: "기간",
   day: "일",
-  idlePeriod: "대기 구간",
   active: "활성",
   locked: "잠김",
   delete: "삭제",

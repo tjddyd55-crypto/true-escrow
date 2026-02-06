@@ -478,24 +478,23 @@ export default function TransactionBuilderPage() {
                   >
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start", marginBottom: 15 }}>
                       <div style={{ flex: 1 }}>
-                        {isDraft && !block.isActive ? (
+                        {isDraft ? (
                           <input
                             type="text"
                             value={block.title}
                             onChange={(e) => updateBlock(block.id, { title: e.target.value })}
+                            onBlur={() => fetchData()}
                             placeholder={t.blockTitle}
                             style={{ width: "100%", padding: 8, fontSize: "1.1rem", fontWeight: "600", border: "1px solid #e0e0e0", borderRadius: 4, marginBottom: 5 }}
                           />
                         ) : (
                           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 5 }}>
-                            {!block.isActive && (
-                              <span style={{ fontSize: "1rem", color: "#666" }}>🔒</span>
-                            )}
+                            <span style={{ fontSize: "1rem", color: "#666" }}>🔒</span>
                             <h3 style={{ margin: 0 }}>{block.title}</h3>
                           </div>
                         )}
                         <div style={{ display: "flex", gap: 15, alignItems: "center", marginBottom: 10, flexWrap: "wrap" }}>
-                          {isDraft && !block.isActive ? (
+                          {isDraft ? (
                             <>
                               <input
                                 type="date"
@@ -633,12 +632,10 @@ export default function TransactionBuilderPage() {
                                 type="checkbox"
                                 checked={approver.required}
                                 onChange={(e) => {
-                                  if (isDraft && !block.isActive) {
-                                    updateApprover(approver.id, block.id, { required: e.target.checked });
-                                  }
+                                  if (isDraft) updateApprover(approver.id, block.id, { required: e.target.checked });
                                 }}
-                                disabled={!isDraft || block.isActive}
-                                style={{ cursor: isDraft && !block.isActive ? "pointer" : "not-allowed" }}
+                                disabled={!isDraft}
+                                style={{ cursor: isDraft ? "pointer" : "not-allowed" }}
                               />
                               <span style={{ fontSize: "0.9rem", fontWeight: "600", minWidth: 100 }}>
                                 {approver.role}
@@ -654,7 +651,7 @@ export default function TransactionBuilderPage() {
                               {!approver.required && (
                                 <span style={{ fontSize: "0.75rem", color: "#666" }}>{t.optional}</span>
                               )}
-                              {isDraft && !block.isActive && (
+                              {isDraft && (
                                 <button
                                   onClick={() => deleteApprover(approver.id, block.id)}
                                   style={{
@@ -674,7 +671,7 @@ export default function TransactionBuilderPage() {
                           ))}
                         </div>
                       )}
-                      {(!isDraft || block.isActive) && approvers.length > 0 && (
+                      {!isDraft && approvers.length > 0 && (
                         <p style={{ margin: "10px 0 0 0", fontSize: "0.8rem", color: "#666" }}>
                           {t.lockedAfterActivation}
                         </p>
@@ -685,7 +682,7 @@ export default function TransactionBuilderPage() {
                     <div style={{ marginBottom: 15 }}>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
                         <h4 style={{ margin: 0, fontSize: "1rem" }}>{t.workRules}</h4>
-                        {isDraft && !block.isActive && (
+                        {isDraft && (
                           <button
                             onClick={() => addWorkRule(block.id)}
                             style={{
@@ -713,12 +710,13 @@ export default function TransactionBuilderPage() {
                             backgroundColor: "#f8f9fa",
                           }}
                         >
-                          {isDraft && !block.isActive ? (
+                          {isDraft ? (
                             <>
                               <input
                                 type="text"
                                 value={rule.workType}
                                 onChange={(e) => updateWorkRule(rule.id, { workType: e.target.value })}
+                                onBlur={() => fetchData()}
                                 placeholder={t.workType}
                                 style={{ width: "100%", padding: 4, marginBottom: 5, border: "1px solid #e0e0e0", borderRadius: 4 }}
                               />
@@ -726,7 +724,8 @@ export default function TransactionBuilderPage() {
                                 <input
                                   type="number"
                                   value={rule.quantity}
-                                  onChange={(e) => updateWorkRule(rule.id, { quantity: parseInt(e.target.value) })}
+                                  onChange={(e) => updateWorkRule(rule.id, { quantity: parseInt(e.target.value) || 0 })}
+                                  onBlur={() => fetchData()}
                                   placeholder={t.quantity}
                                   style={{ width: 80, padding: 4, border: "1px solid #e0e0e0", borderRadius: 4 }}
                                 />
@@ -748,6 +747,7 @@ export default function TransactionBuilderPage() {
                                   const dates = e.target.value.split(",").map((d) => parseInt(d.trim())).filter((n) => !isNaN(n));
                                   updateWorkRule(rule.id, { dueDates: dates });
                                 }}
+                                onBlur={() => fetchData()}
                                 placeholder={t.dueDates}
                                 style={{ width: "100%", padding: 4, border: "1px solid #e0e0e0", borderRadius: 4 }}
                               />
@@ -927,7 +927,7 @@ export default function TransactionBuilderPage() {
                         }}
                       >
                         <span>{formatShortRange(seg.startDate, seg.endDate)}</span>
-                        <span style={{ fontWeight: "500" }}>{t.idlePeriod}</span>
+                        <span style={{ fontWeight: "500", color: "#999" }}>—</span>
                         <span style={{ fontSize: "0.85rem", color: "#999" }}>—</span>
                       </div>
                     )

@@ -1,6 +1,6 @@
 /**
- * Timeline segments: real blocks + auto-generated gap blocks (idle periods).
- * No uncolored dates within transaction range.
+ * Timeline segments: real blocks + auto-generated gap blocks (neutral empty time).
+ * Gap = no label, no meaning, no rules. No uncolored dates within transaction range.
  */
 
 import type { Block, TimelineSegment } from "./types";

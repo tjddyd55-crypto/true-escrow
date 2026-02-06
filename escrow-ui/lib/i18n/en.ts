@@ -15,7 +15,6 @@ export const en = {
   blockTitle: "Block Title",
   period: "Period",
   day: "Day",
-  idlePeriod: "Idle Period",
   active: "Active",
   locked: "Locked",
   delete: "Delete",

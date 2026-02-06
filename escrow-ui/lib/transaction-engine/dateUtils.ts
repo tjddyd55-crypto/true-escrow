@@ -45,3 +45,27 @@ export function compareDate(a: string, b: string): number {
   if (a > b) return 1;
   return 0;
 }
+
+/** YYYY-MM from date string */
+export function getMonthKey(iso: string): string {
+  return iso.slice(0, 7);
+}
+
+/** "2026 February" */
+export function formatMonthYear(iso: string): string {
+  const d = new Date(iso + "T12:00:00Z");
+  const months = "January February March April May June July August September October November December".split(" ");
+  return `${d.getUTCFullYear()} ${months[d.getUTCMonth()]}`;
+}
+
+/** First day of month (YYYY-MM-DD), then add days for last day */
+export function monthStart(iso: string): string {
+  return iso.slice(0, 7) + "-01";
+}
+
+export function monthEnd(iso: string): string {
+  const d = new Date(iso + "T12:00:00Z");
+  d.setUTCMonth(d.getUTCMonth() + 1);
+  d.setUTCDate(0);
+  return toISODate(d);
+}

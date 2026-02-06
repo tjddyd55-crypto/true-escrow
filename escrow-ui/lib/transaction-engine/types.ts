@@ -35,7 +35,7 @@ export type Block = {
   isActive: boolean;
 };
 
-/** Timeline segment for display: either a real block or an auto-generated gap (idle period). */
+/** Timeline segment: real block or system-generated gap (neutral empty time; no meaning, no rules). */
 export type TimelineSegment =
   | { type: "block"; block: Block }
   | { type: "gap"; startDate: string; endDate: string };
