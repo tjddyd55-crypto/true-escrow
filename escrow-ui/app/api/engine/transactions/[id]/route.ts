@@ -61,6 +61,8 @@ export async function PATCH(
     
     if (body.title !== undefined) transaction.title = body.title;
     if (body.description !== undefined) transaction.description = body.description;
+    if (body.startDate !== undefined) transaction.startDate = body.startDate;
+    if (body.endDate !== undefined) transaction.endDate = body.endDate;
     
     // Save updated graph
     const blocks = store.getBlocks(id);

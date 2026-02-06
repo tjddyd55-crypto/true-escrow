@@ -4,6 +4,8 @@ export const en = {
   transactionTitle: "Transaction Title",
   transactionDescription: "Transaction Description",
   overallDuration: "Overall Duration",
+  startDate: "Start date",
+  endDate: "End date",
   status: "Status",
   activateTransaction: "Activate Transaction",
   
@@ -13,6 +15,7 @@ export const en = {
   blockTitle: "Block Title",
   period: "Period",
   day: "Day",
+  idlePeriod: "Idle Period",
   active: "Active",
   locked: "Locked",
   delete: "Delete",
@@ -57,7 +60,8 @@ export const en = {
   
   // Timeline
   timeline: "Timeline",
-  
+  calendar: "Calendar",
+
   // Activity Log
   activityLog: "Activity Log",
   

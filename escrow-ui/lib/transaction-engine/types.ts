@@ -18,18 +18,27 @@ export type Transaction = {
   createdAt: string;
   buyerId?: string;
   sellerId?: string;
+  /** Absolute time: transaction period (calendar dates). Set once at creation. */
+  startDate?: string; // YYYY-MM-DD
+  endDate?: string;   // YYYY-MM-DD
 };
 
 export type Block = {
   id: string;
   transactionId: string;
   title: string;
-  startDay: number;
-  endDay: number;
+  /** Segment time: block period (calendar dates). Duration = derived. */
+  startDate: string; // YYYY-MM-DD
+  endDate: string;  // YYYY-MM-DD
   orderIndex: number;
   approvalPolicyId: string;
   isActive: boolean;
 };
+
+/** Timeline segment for display: either a real block or an auto-generated gap (idle period). */
+export type TimelineSegment =
+  | { type: "block"; block: Block }
+  | { type: "gap"; startDate: string; endDate: string };
 
 export type ApprovalPolicy = {
   id: string;

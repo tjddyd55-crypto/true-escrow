@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ ok: false, error: "Template not found" }, { status: 404 });
       }
       
-      // Create new transaction
+      // Create new transaction (use template dates so blocks stay in range)
       const transaction = store.createTransaction({
         title: body.title || template.transaction.title,
         description: body.description || template.transaction.description,
@@ -32,6 +32,8 @@ export async function POST(request: NextRequest) {
         initiatorRole: body.initiatorRole || template.transaction.initiatorRole,
         buyerId: body.buyerId || template.transaction.buyerId,
         sellerId: body.sellerId || template.transaction.sellerId,
+        startDate: template.transaction.startDate,
+        endDate: template.transaction.endDate,
       });
       
       console.log("[API] Created transaction:", transaction.id);

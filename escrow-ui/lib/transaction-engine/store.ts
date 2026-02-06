@@ -16,6 +16,7 @@ import type {
   WorkItemStatus,
 } from "./types";
 import { appendLog } from "./log";
+import { addDays, daysBetween } from "./dateUtils";
 import fs from "fs";
 import path from "path";
 
@@ -29,10 +30,33 @@ let workItems: WorkItem[] = [];
 
 const DATA_FILE = path.join(process.cwd(), ".data", "transaction-engine.json");
 
+// Migrate old data (startDay/endDay -> startDate/endDate)
+function migrateLoadedData(): void {
+  const today = toISODate(new Date());
+  const defaultEnd = addDays(today, 30);
+  transactions.forEach((tx) => {
+    if (!tx.startDate) (tx as Transaction).startDate = today;
+    if (!tx.endDate) (tx as Transaction).endDate = defaultEnd;
+  });
+  blocks.forEach((b) => {
+    const block = b as Block & { startDay?: number; endDay?: number };
+    if (block.startDate && block.endDate) return;
+    const tx = findTransaction(block.transactionId);
+    const base = tx?.startDate ?? today;
+    if (block.startDay != null && block.endDay != null) {
+      (block as Block).startDate = addDays(base, block.startDay - 1);
+      (block as Block).endDate = addDays(base, block.endDay - 1);
+    } else {
+      (block as Block).startDate = base;
+      (block as Block).endDate = addDays(base, 6);
+    }
+  });
+}
+
 // Load from file if exists (dev only)
 function loadFromFile(): void {
   if (typeof window !== "undefined") return; // Browser environment
-  
+
   try {
     if (fs.existsSync(DATA_FILE)) {
       const data = JSON.parse(fs.readFileSync(DATA_FILE, "utf-8"));
@@ -42,6 +66,7 @@ function loadFromFile(): void {
       blockApprovers = data.blockApprovers || [];
       workRules = data.workRules || [];
       workItems = data.workItems || [];
+      migrateLoadedData();
     }
   } catch (error) {
     console.error("Failed to load store from file:", error);
@@ -94,6 +119,13 @@ function isDraft(transactionId: string): boolean {
 
 // CRUD Operations
 
+function toISODate(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
 export function createTransaction(payload: {
   title: string;
   description?: string;
@@ -101,7 +133,11 @@ export function createTransaction(payload: {
   initiatorRole: "BUYER" | "SELLER";
   buyerId?: string;
   sellerId?: string;
+  startDate?: string;
+  endDate?: string;
 }): Transaction {
+  const today = toISODate(new Date());
+  const defaultEnd = addDays(today, 30);
   const transaction: Transaction = {
     id: generateId(),
     title: payload.title,
@@ -112,6 +148,8 @@ export function createTransaction(payload: {
     createdAt: new Date().toISOString(),
     buyerId: payload.buyerId,
     sellerId: payload.sellerId,
+    startDate: payload.startDate ?? today,
+    endDate: payload.endDate ?? defaultEnd,
   };
   transactions.push(transaction);
   appendLog(transaction.id, "ADMIN", "TRANSACTION_CREATED", { title: payload.title });
@@ -121,6 +159,27 @@ export function createTransaction(payload: {
 
 export function getTransaction(id: string): Transaction | undefined {
   return transactions.find((t) => t.id === id);
+}
+
+/**
+ * Suggested default dates for a new block (suggestions only; user may adjust within bounds).
+ * - First block: startDate = tx.startDate, endDate = tx.endDate
+ * - Next blocks: startDate = previousBlock.endDate + 1 day, endDate = transaction.endDate
+ * Returns null if there is no room (e.g. last block already ends at tx.endDate).
+ */
+export function getSuggestedBlockDates(transactionId: string): { startDate: string; endDate: string } | null {
+  const tx = findTransaction(transactionId);
+  if (!tx?.startDate || !tx?.endDate) return null;
+
+  const existing = blocks.filter((b) => b.transactionId === transactionId).sort((a, b) => a.orderIndex - b.orderIndex);
+  if (existing.length === 0) {
+    return { startDate: tx.startDate, endDate: tx.endDate };
+  }
+
+  const last = existing[existing.length - 1];
+  const startDate = addDays(last.endDate, 1);
+  if (startDate > tx.endDate) return null; // no room
+  return { startDate, endDate: tx.endDate };
 }
 
 export function listTransactions(): Transaction[] {
@@ -196,14 +255,56 @@ export function updateBlock(id: string, patch: Partial<Block>): Block {
     throw new Error("Block can only be updated in DRAFT status");
   }
 
+  const tx = findTransaction(block.transactionId);
+  const newStart = patch.startDate ?? block.startDate;
+  const newEnd = patch.endDate ?? block.endDate;
+  if (patch.startDate !== undefined || patch.endDate !== undefined) {
+    if (newStart > newEnd) throw new Error("Block startDate must be before or equal to endDate");
+    if (tx?.startDate && newStart < tx.startDate) throw new Error("Block must be within transaction range");
+    if (tx?.endDate && newEnd > tx.endDate) throw new Error("Block must be within transaction range");
+    const others = blocks.filter((b) => b.transactionId === block.transactionId && b.id !== id);
+    for (const b of others) {
+      if (blocksOverlap(b.startDate, b.endDate, newStart, newEnd)) {
+        throw new Error("Blocks cannot overlap");
+      }
+    }
+  }
+
   Object.assign(block, patch);
   saveToFile();
   return block;
 }
 
+function blocksOverlap(
+  aStart: string,
+  aEnd: string,
+  bStart: string,
+  bEnd: string
+): boolean {
+  return aStart <= bEnd && bStart <= aEnd;
+}
+
 export function addBlock(transactionId: string, block: Omit<Block, "id" | "transactionId" | "isActive">): Block {
   if (!isDraft(transactionId)) {
     throw new Error("Blocks can only be added in DRAFT status");
+  }
+
+  const tx = findTransaction(transactionId);
+  if (!tx?.startDate || !tx?.endDate) {
+    throw new Error("Transaction must have startDate and endDate before adding blocks");
+  }
+
+  const existing = blocks.filter((b) => b.transactionId === transactionId).sort((a, b) => a.orderIndex - b.orderIndex);
+  for (const b of existing) {
+    if (blocksOverlap(b.startDate, b.endDate, block.startDate, block.endDate)) {
+      throw new Error("Blocks cannot overlap");
+    }
+  }
+  if (block.startDate < tx.startDate || block.endDate > tx.endDate) {
+    throw new Error("Block must be within transaction date range");
+  }
+  if (block.startDate > block.endDate) {
+    throw new Error("Block startDate must be before or equal to endDate");
   }
 
   const newBlock: Block = {
@@ -218,7 +319,7 @@ export function addBlock(transactionId: string, block: Omit<Block, "id" | "trans
   return newBlock;
 }
 
-export function splitBlock(blockId: string, splitDay: number): { block1: Block; block2: Block } {
+export function splitBlock(blockId: string, splitDateIso: string): { block1: Block; block2: Block } {
   const block = blocks.find((b) => b.id === blockId);
   if (!block) {
     throw new Error("Block not found");
@@ -226,43 +327,40 @@ export function splitBlock(blockId: string, splitDay: number): { block1: Block; 
   if (!isDraft(block.transactionId)) {
     throw new Error("Block can only be split in DRAFT status");
   }
-  if (splitDay <= block.startDay || splitDay >= block.endDay) {
-    throw new Error("Split day must be within block period");
+  if (splitDateIso <= block.startDate || splitDateIso >= block.endDate) {
+    throw new Error("Split date must be within block period");
   }
 
-  // Create two blocks
+  const block1End = addDays(splitDateIso, -1);
   const block1: Block = {
     ...block,
     id: generateId(),
-    endDay: splitDay - 1,
+    endDate: block1End,
   };
   const block2: Block = {
     ...block,
     id: generateId(),
-    startDay: splitDay,
+    startDate: splitDateIso,
     orderIndex: block.orderIndex + 1,
   };
 
-  // Update subsequent blocks' orderIndex
   blocks
     .filter((b) => b.transactionId === block.transactionId && b.orderIndex > block.orderIndex)
     .forEach((b) => {
       b.orderIndex += 1;
     });
 
-  // Replace original block with block1, add block2
   const blockIndex = blocks.findIndex((b) => b.id === blockId);
   blocks[blockIndex] = block1;
   blocks.push(block2);
 
-  // Move work rules to block1 (in real implementation, might need to split)
   workRules
     .filter((wr) => wr.blockId === blockId)
     .forEach((wr) => {
       wr.blockId = block1.id;
     });
 
-  appendLog(block.transactionId, "ADMIN", "BLOCK_SPLIT", { blockId, splitDay });
+  appendLog(block.transactionId, "ADMIN", "BLOCK_SPLIT", { blockId, splitDate: splitDateIso });
   saveToFile();
 
   return { block1, block2 };
@@ -325,14 +423,16 @@ export function generateWorkItemsForBlock(blockId: string): WorkItem[] {
     throw new Error("Block not found");
   }
 
+  const tx = findTransaction(block.transactionId);
+  const transactionStartDate = tx?.startDate ?? block.startDate;
+
   const rules = workRules.filter((r) => r.blockId === blockId);
   const newItems: WorkItem[] = [];
 
   for (const rule of rules) {
-    const dueDays = calculateDueDays(rule, block);
-    
+    const dueDays = calculateDueDays(rule, block, transactionStartDate);
+
     for (const dueDay of dueDays) {
-      // Check if item already exists
       const existing = workItems.find(
         (wi) => wi.workRuleId === rule.id && wi.dueDay === dueDay
       );
@@ -353,28 +453,37 @@ export function generateWorkItemsForBlock(blockId: string): WorkItem[] {
   return newItems;
 }
 
-function calculateDueDays(rule: WorkRule, block: Block): number[] {
+/** Derive day indices (1-based from transaction start) from block dates. */
+function blockDayRange(txStartDate: string, block: Block): { startDay: number; endDay: number } {
+  const startDay = daysBetween(txStartDate, block.startDate);
+  const endDay = daysBetween(txStartDate, block.endDate);
+  return { startDay, endDay };
+}
+
+function calculateDueDays(rule: WorkRule, block: Block, transactionStartDate: string): number[] {
+  const { startDay, endDay } = blockDayRange(transactionStartDate, block);
+
   if (rule.dueDates && rule.dueDates.length > 0) {
-    return rule.dueDates.slice(0, rule.quantity);
+    return rule.dueDates.filter((d) => d >= startDay && d <= endDay).slice(0, rule.quantity);
   }
 
   const days: number[] = [];
   switch (rule.frequency) {
     case "ONCE":
-      days.push(block.endDay);
+      days.push(endDay);
       break;
     case "DAILY":
-      for (let day = block.startDay; day <= block.endDay && days.length < rule.quantity; day++) {
+      for (let day = startDay; day <= endDay && days.length < rule.quantity; day++) {
         days.push(day);
       }
       break;
     case "WEEKLY":
-      for (let day = block.startDay; day <= block.endDay && days.length < rule.quantity; day += 7) {
+      for (let day = startDay; day <= endDay && days.length < rule.quantity; day += 7) {
         days.push(day);
       }
       break;
     case "CUSTOM":
-      days.push(block.endDay);
+      days.push(endDay);
       break;
   }
 

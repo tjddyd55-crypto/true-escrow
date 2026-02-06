@@ -4,6 +4,8 @@ export const ko = {
   transactionTitle: "거래 제목",
   transactionDescription: "거래 설명",
   overallDuration: "전체 기간",
+  startDate: "시작일",
+  endDate: "종료일",
   status: "상태",
   activateTransaction: "거래 활성화",
   
@@ -13,6 +15,7 @@ export const ko = {
   blockTitle: "블록 제목",
   period: "기간",
   day: "일",
+  idlePeriod: "대기 구간",
   active: "활성",
   locked: "잠김",
   delete: "삭제",
@@ -57,7 +60,8 @@ export const ko = {
   
   // Timeline
   timeline: "타임라인",
-  
+  calendar: "달력",
+
   // Activity Log
   activityLog: "활동 로그",
   

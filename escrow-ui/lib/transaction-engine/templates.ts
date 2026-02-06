@@ -1,8 +1,10 @@
 /**
- * Transaction Templates
+ * Transaction Templates (date-based: startDate/endDate)
  */
 
 import type { TransactionGraph } from "./types";
+
+const BASE = "2026-02-01";
 
 export const templates: Record<string, TransactionGraph> = {
   "marketing-freelance": {
@@ -16,14 +18,16 @@ export const templates: Record<string, TransactionGraph> = {
       createdAt: new Date().toISOString(),
       buyerId: "00000000-0000-0000-0000-000000000001",
       sellerId: "00000000-0000-0000-0000-000000000002",
+      startDate: BASE,
+      endDate: "2026-03-02",
     },
     blocks: [
       {
         id: "block-1",
         transactionId: "template-marketing",
         title: "Content Creation Phase",
-        startDay: 1,
-        endDay: 30,
+        startDate: BASE,
+        endDate: "2026-03-02",
         orderIndex: 1,
         approvalPolicyId: "policy-1",
         isActive: false,
@@ -67,14 +71,16 @@ export const templates: Record<string, TransactionGraph> = {
       createdAt: new Date().toISOString(),
       buyerId: "00000000-0000-0000-0000-000000000001",
       sellerId: "00000000-0000-0000-0000-000000000002",
+      startDate: BASE,
+      endDate: "2026-02-22",
     },
     blocks: [
       {
         id: "block-1",
         transactionId: "template-real-estate",
         title: "Document Review",
-        startDay: 1,
-        endDay: 7,
+        startDate: BASE,
+        endDate: "2026-02-07",
         orderIndex: 1,
         approvalPolicyId: "policy-1",
         isActive: false,
@@ -83,8 +89,8 @@ export const templates: Record<string, TransactionGraph> = {
         id: "block-2",
         transactionId: "template-real-estate",
         title: "Property Inspection",
-        startDay: 8,
-        endDay: 14,
+        startDate: "2026-02-08",
+        endDate: "2026-02-14",
         orderIndex: 2,
         approvalPolicyId: "policy-2",
         isActive: false,
@@ -93,8 +99,8 @@ export const templates: Record<string, TransactionGraph> = {
         id: "block-3",
         transactionId: "template-real-estate",
         title: "Closing",
-        startDay: 15,
-        endDay: 21,
+        startDate: "2026-02-15",
+        endDate: "2026-02-21",
         orderIndex: 3,
         approvalPolicyId: "policy-3",
         isActive: false,
@@ -154,14 +160,16 @@ export const templates: Record<string, TransactionGraph> = {
       createdAt: new Date().toISOString(),
       buyerId: "00000000-0000-0000-0000-000000000001",
       sellerId: "00000000-0000-0000-0000-000000000002",
+      startDate: BASE,
+      endDate: "2026-02-11",
     },
     blocks: [
       {
         id: "block-1",
         transactionId: "template-vehicle",
         title: "Vehicle Inspection",
-        startDay: 1,
-        endDay: 5,
+        startDate: BASE,
+        endDate: "2026-02-05",
         orderIndex: 1,
         approvalPolicyId: "policy-1",
         isActive: false,
@@ -170,8 +178,8 @@ export const templates: Record<string, TransactionGraph> = {
         id: "block-2",
         transactionId: "template-vehicle",
         title: "Title Transfer",
-        startDay: 6,
-        endDay: 10,
+        startDate: "2026-02-06",
+        endDate: "2026-02-10",
         orderIndex: 2,
         approvalPolicyId: "policy-2",
         isActive: false,

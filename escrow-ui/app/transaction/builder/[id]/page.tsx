@@ -13,6 +13,9 @@ import type {
   WorkItem,
   ActivityLog,
 } from "@/lib/transaction-engine/types";
+import { daysBetween, formatShortRange } from "@/lib/transaction-engine/dateUtils";
+import { getTimelineSegments } from "@/lib/transaction-engine/timelineSegments";
+import { TransactionCalendar } from "@/components/TransactionCalendar";
 
 export default function TransactionBuilderPage() {
   const params = useParams();
@@ -80,13 +83,12 @@ export default function TransactionBuilderPage() {
 
   async function addBlock() {
     if (!graph || graph.transaction.status !== "DRAFT") return;
+    if (!graph.transaction.startDate || !graph.transaction.endDate) {
+      console.error("Transaction must have startDate and endDate");
+      return;
+    }
 
     const orderIndex = graph.blocks.length + 1;
-    const startDay = graph.blocks.length > 0 
-      ? Math.max(...graph.blocks.map((b) => b.endDay)) + 1 
-      : 1;
-    const endDay = startDay + 6;
-
     try {
       const res = await fetch("/api/engine/blocks", {
         method: "POST",
@@ -94,14 +96,15 @@ export default function TransactionBuilderPage() {
         body: JSON.stringify({
           transactionId,
           title: `Block ${orderIndex}`,
-          startDay,
-          endDay,
           orderIndex,
           approvalType: "SINGLE",
         }),
       });
       if (res.ok) {
         fetchData();
+      } else {
+        const data = await res.json();
+        alert(data.error || "Failed to add block");
       }
     } catch (error) {
       console.error("Failed to add block:", error);
@@ -313,8 +316,11 @@ export default function TransactionBuilderPage() {
   }
 
   const isDraft = graph.transaction.status === "DRAFT";
-  const overallDuration = graph.blocks.length > 0
-    ? `Day 1 – Day ${Math.max(...graph.blocks.map((b) => b.endDay))}`
+  const txStart = graph.transaction.startDate;
+  const txEnd = graph.transaction.endDate;
+  const totalDays = txStart && txEnd ? daysBetween(txStart, txEnd) : 0;
+  const overallDuration = txStart && txEnd
+    ? `${txStart} → ${txEnd} (${totalDays} days)`
     : "Not set";
 
   const activeBlock = graph.blocks.find((b) => b.isActive);
@@ -379,6 +385,16 @@ export default function TransactionBuilderPage() {
             <h2 style={{ margin: 0, marginBottom: 5 }}>{graph.transaction.title}</h2>
             <p style={{ margin: 0, color: "#666" }}>{graph.transaction.description}</p>
           </>
+        )}
+        {isDraft && (
+          <div style={{ display: "flex", gap: 16, alignItems: "center", marginTop: 10, flexWrap: "wrap" }}>
+            <label style={{ fontSize: "0.9rem", color: "#666" }}>
+              {t.startDate}: <input type="date" value={txStart || ""} onChange={(e) => updateTransaction({ startDate: e.target.value })} style={{ padding: 4, border: "1px solid #e0e0e0", borderRadius: 4 }} />
+            </label>
+            <label style={{ fontSize: "0.9rem", color: "#666" }}>
+              {t.endDate}: <input type="date" value={txEnd || ""} onChange={(e) => updateTransaction({ endDate: e.target.value })} style={{ padding: 4, border: "1px solid #e0e0e0", borderRadius: 4 }} />
+            </label>
+          </div>
         )}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 15 }}>
           <span style={{ color: "#666" }}>{t.overallDuration}: {overallDuration}</span>
@@ -478,27 +494,29 @@ export default function TransactionBuilderPage() {
                             <h3 style={{ margin: 0 }}>{block.title}</h3>
                           </div>
                         )}
-                        <div style={{ display: "flex", gap: 15, alignItems: "center", marginBottom: 10 }}>
+                        <div style={{ display: "flex", gap: 15, alignItems: "center", marginBottom: 10, flexWrap: "wrap" }}>
                           {isDraft && !block.isActive ? (
                             <>
-                              <span>{t.day}</span>
                               <input
-                                type="number"
-                                value={block.startDay}
-                                onChange={(e) => updateBlock(block.id, { startDay: parseInt(e.target.value) })}
-                                style={{ width: 60, padding: 4, border: "1px solid #e0e0e0", borderRadius: 4 }}
+                                type="date"
+                                value={block.startDate}
+                                onChange={(e) => updateBlock(block.id, { startDate: e.target.value })}
+                                style={{ padding: 4, border: "1px solid #e0e0e0", borderRadius: 4 }}
                               />
-                              <span>–</span>
+                              <span>→</span>
                               <input
-                                type="number"
-                                value={block.endDay}
-                                onChange={(e) => updateBlock(block.id, { endDay: parseInt(e.target.value) })}
-                                style={{ width: 60, padding: 4, border: "1px solid #e0e0e0", borderRadius: 4 }}
+                                type="date"
+                                value={block.endDate}
+                                onChange={(e) => updateBlock(block.id, { endDate: e.target.value })}
+                                style={{ padding: 4, border: "1px solid #e0e0e0", borderRadius: 4 }}
                               />
+                              <span style={{ fontSize: "0.85rem", color: "#666" }}>
+                                ({daysBetween(block.startDate, block.endDate)} days)
+                              </span>
                             </>
                           ) : (
                             <span style={{ fontSize: "0.9rem", color: "#666" }}>
-                              {t.period}: {t.day} {block.startDay} – {t.day} {block.endDay}
+                              {block.startDate} → {block.endDate} ({daysBetween(block.startDate, block.endDate)} days)
                             </span>
                           )}
                         </div>
@@ -859,45 +877,75 @@ export default function TransactionBuilderPage() {
             </div>
           </div>
 
-          {/* Timeline Preview */}
+          {/* Timeline Preview (blocks + gap blocks) */}
           <div style={{ marginBottom: 40 }}>
             <h2 style={{ fontSize: "1.8rem", marginBottom: 20 }}>{t.timeline}</h2>
             <div style={{ border: "1px solid #e0e0e0", borderRadius: 8, padding: 20 }}>
-              {graph.blocks.length === 0 ? (
-                <p style={{ color: "#666", textAlign: "center" }}>No blocks yet</p>
+              {!txStart || !txEnd ? (
+                <p style={{ color: "#666", textAlign: "center" }}>Set transaction start/end date</p>
               ) : (
                 <div style={{ display: "grid", gap: 10 }}>
-                  {graph.blocks.map((block) => (
-                    <div
-                      key={block.id}
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                        padding: 12,
-                        backgroundColor: block.isActive ? "#f0f9ff" : "#f8f9fa",
-                        borderRadius: 4,
-                      }}
-                    >
-                      <span>Day {block.startDay}–{block.endDay}</span>
-                      <span style={{ fontWeight: "600" }}>{block.title}</span>
-                      <span
+                  {getTimelineSegments(txStart, txEnd, graph.blocks).map((seg, idx) =>
+                    seg.type === "block" ? (
+                      <div
+                        key={seg.block.id}
                         style={{
-                          padding: "2px 8px",
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                          padding: 12,
+                          backgroundColor: seg.block.isActive ? "#f0f9ff" : "#f8f9fa",
                           borderRadius: 4,
-                          backgroundColor: block.isActive ? "#00b894" : "#e0e0e0",
-                          color: block.isActive ? "white" : "#666",
-                          fontSize: "0.85rem",
                         }}
                       >
-                        {block.isActive ? "Active" : "Locked"}
-                      </span>
-                    </div>
-                  ))}
+                        <span>{formatShortRange(seg.block.startDate, seg.block.endDate)}</span>
+                        <span style={{ fontWeight: "600" }}>{seg.block.title}</span>
+                        <span
+                          style={{
+                            padding: "2px 8px",
+                            borderRadius: 4,
+                            backgroundColor: seg.block.isActive ? "#00b894" : "#e0e0e0",
+                            color: seg.block.isActive ? "white" : "#666",
+                            fontSize: "0.85rem",
+                          }}
+                        >
+                          {seg.block.isActive ? t.active : t.locked}
+                        </span>
+                      </div>
+                    ) : (
+                      <div
+                        key={`gap-${idx}-${seg.startDate}`}
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                          padding: 12,
+                          backgroundColor: "#f0f0f0",
+                          border: "2px dashed #999",
+                          borderRadius: 4,
+                          color: "#666",
+                        }}
+                      >
+                        <span>{formatShortRange(seg.startDate, seg.endDate)}</span>
+                        <span style={{ fontWeight: "500" }}>{t.idlePeriod}</span>
+                        <span style={{ fontSize: "0.85rem", color: "#999" }}>—</span>
+                      </div>
+                    )
+                  )}
                 </div>
               )}
             </div>
           </div>
+
+          {/* Calendar (blocks + gap blocks; no uncolored dates in range) */}
+          {txStart && txEnd && (
+            <TransactionCalendar
+              txStartDate={txStart}
+              txEndDate={txEnd}
+              blocks={graph.blocks}
+              title={t.calendar ?? "Calendar"}
+            />
+          )}
         </div>
 
         {/* Activity Log */}
