@@ -17,8 +17,8 @@ import {
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-/** Distinct colors per block so "which phase" is obvious at a glance */
-const BLOCK_COLORS = [
+/** Distinct colors per block so "which phase" is obvious at a glance (calendar + builder) */
+export const BLOCK_COLORS = [
   "#bbdefb", // blue
   "#c8e6c9", // green
   "#ffe0b2", // orange

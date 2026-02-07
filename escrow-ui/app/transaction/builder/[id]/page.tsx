@@ -15,7 +15,7 @@ import type {
 } from "@/lib/transaction-engine/types";
 import { daysBetween, formatShortRange } from "@/lib/transaction-engine/dateUtils";
 import { getTimelineSegments } from "@/lib/transaction-engine/timelineSegments";
-import { TransactionCalendar } from "@/components/TransactionCalendar";
+import { TransactionCalendar, BLOCK_COLORS } from "@/components/TransactionCalendar";
 
 export default function TransactionBuilderPage() {
   const params = useParams();
@@ -26,6 +26,7 @@ export default function TransactionBuilderPage() {
   const [loading, setLoading] = useState(true);
   const [editingBlock, setEditingBlock] = useState<string | null>(null);
   const [editingWorkRule, setEditingWorkRule] = useState<string | null>(null);
+  const [localBlockTitles, setLocalBlockTitles] = useState<Record<string, string>>({});
 
   useEffect(() => {
     if (transactionId) {
@@ -183,15 +184,19 @@ export default function TransactionBuilderPage() {
     }
   }
 
-  async function deleteWorkRule(ruleId: string) {
+  async function deleteWorkRule(workRuleId: string) {
     if (!graph || graph.transaction.status !== "DRAFT") return;
+    if (!workRuleId) return;
 
     try {
-      const res = await fetch(`/api/engine/workrules/${ruleId}`, {
+      const res = await fetch(`/api/engine/workrules/${workRuleId}`, {
         method: "DELETE",
       });
       if (res.ok) {
-        fetchData();
+        await fetchData();
+      } else {
+        const err = await res.json();
+        console.error("WorkRule delete failed:", err);
       }
     } catch (error) {
       console.error("Failed to delete work rule:", error);
@@ -277,13 +282,22 @@ export default function TransactionBuilderPage() {
 
   async function deleteApprover(approverId: string, blockId: string) {
     if (!graph || graph.transaction.status !== "DRAFT") return;
+    if (!approverId) return;
 
     try {
       const res = await fetch(`/api/engine/blocks/${blockId}/approvers/${approverId}`, {
         method: "DELETE",
       });
       if (res.ok) {
-        fetchData();
+        setGraph((prev) =>
+          prev
+            ? { ...prev, blockApprovers: prev.blockApprovers.filter((a) => a.id !== approverId) }
+            : null
+        );
+        await fetchData();
+      } else {
+        const err = await res.json();
+        console.error("Approver delete failed:", err);
       }
     } catch (error) {
       console.error("Failed to delete approver:", error);
@@ -457,7 +471,7 @@ export default function TransactionBuilderPage() {
             </div>
 
             <div style={{ display: "grid", gap: 20 }}>
-              {graph.blocks.map((block) => {
+              {graph.blocks.map((block, blockIndex) => {
                 const policy = graph.approvalPolicies.find((p) => p.id === block.approvalPolicyId);
                 const approvers = graph.blockApprovers.filter((a) => a.blockId === block.id);
                 const rules = graph.workRules.filter((r) => r.blockId === block.id);
@@ -465,6 +479,7 @@ export default function TransactionBuilderPage() {
                   const rule = graph.workRules.find((r) => r.id === wi.workRuleId);
                   return rule && rule.blockId === block.id;
                 });
+                const blockColor = BLOCK_COLORS[blockIndex % BLOCK_COLORS.length];
 
                 return (
                   <div
@@ -472,6 +487,7 @@ export default function TransactionBuilderPage() {
                     style={{
                       padding: 20,
                       border: "1px solid #e0e0e0",
+                      borderLeft: `4px solid ${blockColor}`,
                       borderRadius: 8,
                       backgroundColor: block.isActive ? "#f0f9ff" : "white",
                     }}
@@ -479,16 +495,45 @@ export default function TransactionBuilderPage() {
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start", marginBottom: 15 }}>
                       <div style={{ flex: 1 }}>
                         {isDraft ? (
-                          <input
-                            type="text"
-                            value={block.title}
-                            onChange={(e) => updateBlock(block.id, { title: e.target.value })}
-                            onBlur={() => fetchData()}
-                            placeholder={t.blockTitle}
-                            style={{ width: "100%", padding: 8, fontSize: "1.1rem", fontWeight: "600", border: "1px solid #e0e0e0", borderRadius: 4, marginBottom: 5 }}
-                          />
+                          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 5 }}>
+                            <span
+                              style={{
+                                width: 12,
+                                height: 12,
+                                borderRadius: 2,
+                                backgroundColor: blockColor,
+                                flexShrink: 0,
+                              }}
+                              title={t.blockTitle}
+                            />
+                            <input
+                              type="text"
+                              value={localBlockTitles[block.id] ?? block.title}
+                              onChange={(e) => setLocalBlockTitles((prev) => ({ ...prev, [block.id]: e.target.value }))}
+                              onBlur={() => {
+                                const title = (localBlockTitles[block.id] ?? block.title).trim();
+                                updateBlock(block.id, { title });
+                                setLocalBlockTitles((prev) => {
+                                  const next = { ...prev };
+                                  delete next[block.id];
+                                  return next;
+                                });
+                              }}
+                              placeholder={t.blockTitle}
+                              style={{ flex: 1, padding: 8, fontSize: "1.1rem", fontWeight: "600", border: "1px solid #e0e0e0", borderRadius: 4 }}
+                            />
+                          </div>
                         ) : (
                           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 5 }}>
+                            <span
+                              style={{
+                                width: 12,
+                                height: 12,
+                                borderRadius: 2,
+                                backgroundColor: blockColor,
+                                flexShrink: 0,
+                              }}
+                            />
                             <span style={{ fontSize: "1rem", color: "#666" }}>🔒</span>
                             <h3 style={{ margin: 0 }}>{block.title}</h3>
                           </div>
@@ -753,6 +798,7 @@ export default function TransactionBuilderPage() {
                               />
                               <button
                                 onClick={() => deleteWorkRule(rule.id)}
+                                type="button"
                                 style={{
                                   marginTop: 5,
                                   padding: "2px 6px",
