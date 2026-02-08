@@ -39,6 +39,7 @@ export const ko = {
   workRules: "작업 규칙",
   addRule: "+ 작업 규칙 추가",
   workType: "작업 유형",
+  workRuleTitle: "제목",
   quantity: "수량",
   frequency: "빈도",
   dueDates: "마감일",

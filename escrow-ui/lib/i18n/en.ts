@@ -39,6 +39,7 @@ export const en = {
   workRules: "Work Rules",
   addRule: "+ Add Rule",
   workType: "Work Type",
+  workRuleTitle: "Title",
   quantity: "Quantity",
   frequency: "Frequency",
   dueDates: "Due Dates",

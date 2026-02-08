@@ -4,7 +4,8 @@
 
 export type TransactionStatus = "DRAFT" | "ACTIVE" | "PAUSED" | "COMPLETED";
 export type ApprovalPolicyType = "SINGLE" | "ALL" | "ANY" | "THRESHOLD";
-export type ApproverRole = "BUYER" | "SELLER" | "VERIFIER";
+export type ApproverRole = "BUYER" | "SELLER" | "VERIFIER" | "ADMIN";
+export type WorkRuleType = "BLOG" | "CUSTOM" | "REVIEW" | "SIGN_OFF" | "DELIVERY" | "DOCUMENT" | "INSPECTION";
 export type WorkFrequency = "ONCE" | "DAILY" | "WEEKLY" | "CUSTOM";
 export type WorkItemStatus = "PENDING" | "SUBMITTED" | "APPROVED" | "REJECTED";
 
@@ -57,7 +58,10 @@ export type BlockApprover = {
 export type WorkRule = {
   id: string;
   blockId: string;
-  workType: string;
+  /** Rule type (enum); used for categorization. */
+  workType: WorkRuleType;
+  /** Editable display title for the rule. */
+  title?: string;
   description?: string;
   quantity: number;
   frequency: WorkFrequency;

@@ -609,6 +609,21 @@ export function createApprovalPolicy(policy: Omit<ApprovalPolicy, "id">): Approv
   return newPolicy;
 }
 
+export function updateApprovalPolicy(
+  policyId: string,
+  patch: Partial<Omit<ApprovalPolicy, "id">>
+): ApprovalPolicy {
+  const policy = approvalPolicies.find((p) => p.id === policyId);
+  if (!policy) throw new Error("Approval policy not found");
+  const block = blocks.find((b) => b.approvalPolicyId === policyId);
+  if (!block || !isDraft(block.transactionId)) {
+    throw new Error("Approval policy can only be updated in DRAFT status");
+  }
+  Object.assign(policy, patch);
+  saveToFile();
+  return policy;
+}
+
 export function addBlockApprover(approver: Omit<BlockApprover, "id">): BlockApprover {
   const block = blocks.find((b) => b.id === approver.blockId);
   if (!block) {

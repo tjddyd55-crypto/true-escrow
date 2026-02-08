@@ -12,6 +12,9 @@ import type {
   WorkRule,
   WorkItem,
   ActivityLog,
+  ApproverRole,
+  WorkRuleType,
+  ApprovalPolicyType,
 } from "@/lib/transaction-engine/types";
 import { daysBetween, formatShortRange } from "@/lib/transaction-engine/dateUtils";
 import { getTimelineSegments } from "@/lib/transaction-engine/timelineSegments";
@@ -27,6 +30,13 @@ export default function TransactionBuilderPage() {
   const [editingBlock, setEditingBlock] = useState<string | null>(null);
   const [editingWorkRule, setEditingWorkRule] = useState<string | null>(null);
   const [localBlockTitles, setLocalBlockTitles] = useState<Record<string, string>>({});
+  const [localWorkRuleTitles, setLocalWorkRuleTitles] = useState<Record<string, string>>({});
+  const [addApproverBlockId, setAddApproverBlockId] = useState<string | null>(null);
+  const [addApproverRole, setAddApproverRole] = useState<ApproverRole>("VERIFIER");
+  const [addApproverDisplayName, setAddApproverDisplayName] = useState("");
+
+  const APPROVER_ROLES: ApproverRole[] = ["BUYER", "SELLER", "VERIFIER", "ADMIN"];
+  const WORK_RULE_TYPES: WorkRuleType[] = ["BLOG", "CUSTOM", "REVIEW", "SIGN_OFF", "DELIVERY", "DOCUMENT", "INSPECTION"];
 
   useEffect(() => {
     if (transactionId) {
@@ -129,6 +139,21 @@ export default function TransactionBuilderPage() {
     }
   }
 
+  async function updateApprovalPolicyType(policyId: string, type: ApprovalPolicyType) {
+    if (!graph || graph.transaction.status !== "DRAFT") return;
+
+    try {
+      const res = await fetch(`/api/engine/approval-policies/${policyId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type }),
+      });
+      if (res.ok) await fetchData();
+    } catch (error) {
+      console.error("Failed to update approval policy:", error);
+    }
+  }
+
   async function deleteBlock(blockId: string) {
     if (!graph || graph.transaction.status !== "DRAFT") return;
 
@@ -144,7 +169,7 @@ export default function TransactionBuilderPage() {
     }
   }
 
-  async function addWorkRule(blockId: string) {
+  async function addWorkRule(blockId: string, workType: WorkRuleType = "CUSTOM") {
     if (!graph || graph.transaction.status !== "DRAFT") return;
 
     try {
@@ -153,15 +178,14 @@ export default function TransactionBuilderPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           blockId,
-          workType: "CUSTOM",
+          workType,
+          title: "",
           quantity: 1,
           frequency: "ONCE",
           dueDates: [],
         }),
       });
-      if (res.ok) {
-        fetchData();
-      }
+      if (res.ok) await fetchData();
     } catch (error) {
       console.error("Failed to add work rule:", error);
     }
@@ -258,7 +282,7 @@ export default function TransactionBuilderPage() {
     }
   }
 
-  async function addApprover(blockId: string, role: "BUYER" | "SELLER" | "VERIFIER", displayName: string, required: boolean) {
+  async function addApprover(blockId: string, role: ApproverRole, displayName: string, required: boolean) {
     if (!graph || graph.transaction.status !== "DRAFT") return;
 
     try {
@@ -267,13 +291,18 @@ export default function TransactionBuilderPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           role,
-          userId: displayName,
-          displayName,
+          userId: displayName.trim() || displayName,
+          displayName: displayName.trim() || displayName,
           required,
         }),
       });
       if (res.ok) {
-        fetchData();
+        setAddApproverBlockId(null);
+        setAddApproverDisplayName("");
+        await fetchData();
+      } else {
+        const err = await res.json();
+        console.error("Add approver failed:", err);
       }
     } catch (error) {
       console.error("Failed to add approver:", error);
@@ -597,15 +626,16 @@ export default function TransactionBuilderPage() {
                       </div>
                     </div>
 
-                    {/* Approval Policy */}
+                    {/* Approval Policy — editable only when transaction.status === "DRAFT" */}
                     <div style={{ marginBottom: 15, padding: 10, backgroundColor: "#f8f9fa", borderRadius: 4 }}>
                       <label style={{ display: "block", marginBottom: 5, fontSize: "0.9rem", fontWeight: "600" }}>
-                        Approval Policy:
+                        {t.approvalPolicy}:
                       </label>
                       <select
                         value={policy?.type || "SINGLE"}
                         onChange={(e) => {
-                          // In real implementation, update policy
+                          const type = e.target.value as ApprovalPolicyType;
+                          if (policy?.id && isDraft) updateApprovalPolicyType(policy.id, type);
                         }}
                         disabled={!isDraft}
                         style={{
@@ -629,19 +659,14 @@ export default function TransactionBuilderPage() {
                       )}
                     </div>
 
-                    {/* Approvers */}
+                    {/* Approvers — role = SELECT (enum), display name = text input */}
                     <div style={{ marginBottom: 15, padding: 10, backgroundColor: "#f8f9fa", borderRadius: 4 }}>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
                         <label style={{ fontSize: "0.9rem", fontWeight: "600" }}>{t.approvers}:</label>
-                        {isDraft && (
+                        {isDraft && addApproverBlockId !== block.id && (
                           <button
-                            onClick={() => {
-                              const role = prompt(t.enterRole, "VERIFIER");
-                              const displayName = prompt(t.enterDisplayName, "Verifier A");
-                              if (role && displayName && ["BUYER", "SELLER", "VERIFIER"].includes(role.toUpperCase())) {
-                                addApprover(block.id, role.toUpperCase() as any, displayName, true);
-                              }
-                            }}
+                            type="button"
+                            onClick={() => setAddApproverBlockId(block.id)}
                             style={{
                               padding: "4px 8px",
                               backgroundColor: "#6c5ce7",
@@ -656,6 +681,56 @@ export default function TransactionBuilderPage() {
                           </button>
                         )}
                       </div>
+                      {isDraft && addApproverBlockId === block.id && (
+                        <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 10, flexWrap: "wrap" }}>
+                          <select
+                            value={addApproverRole}
+                            onChange={(e) => setAddApproverRole(e.target.value as ApproverRole)}
+                            style={{ padding: 6, border: "1px solid #e0e0e0", borderRadius: 4, fontSize: "0.9rem" }}
+                          >
+                            {APPROVER_ROLES.map((r) => (
+                              <option key={r} value={r}>{r}</option>
+                            ))}
+                          </select>
+                          <input
+                            type="text"
+                            value={addApproverDisplayName}
+                            onChange={(e) => setAddApproverDisplayName(e.target.value)}
+                            placeholder={t.enterDisplayName}
+                            style={{ padding: 6, border: "1px solid #e0e0e0", borderRadius: 4, fontSize: "0.9rem", minWidth: 140 }}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => addApprover(block.id, addApproverRole, addApproverDisplayName, true)}
+                            style={{
+                              padding: "6px 12px",
+                              backgroundColor: "#00b894",
+                              color: "white",
+                              border: "none",
+                              borderRadius: 4,
+                              cursor: "pointer",
+                              fontSize: "0.85rem",
+                            }}
+                          >
+                            Add
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => { setAddApproverBlockId(null); setAddApproverDisplayName(""); }}
+                            style={{
+                              padding: "6px 12px",
+                              backgroundColor: "#95a5a6",
+                              color: "white",
+                              border: "none",
+                              borderRadius: 4,
+                              cursor: "pointer",
+                              fontSize: "0.85rem",
+                            }}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      )}
                       {approvers.length === 0 ? (
                         <p style={{ fontSize: "0.85rem", color: "#666", fontStyle: "italic" }}>{t.noApproversYet}</p>
                       ) : (
@@ -744,7 +819,9 @@ export default function TransactionBuilderPage() {
                           </button>
                         )}
                       </div>
-                      {rules.map((rule) => (
+                      {rules.map((rule) => {
+                        const ruleWorkType = WORK_RULE_TYPES.includes(rule.workType as WorkRuleType) ? (rule.workType as WorkRuleType) : "CUSTOM";
+                        return (
                         <div
                           key={rule.id}
                           style={{
@@ -757,14 +834,35 @@ export default function TransactionBuilderPage() {
                         >
                           {isDraft ? (
                             <>
-                              <input
-                                type="text"
-                                value={rule.workType}
-                                onChange={(e) => updateWorkRule(rule.id, { workType: e.target.value })}
-                                onBlur={() => fetchData()}
-                                placeholder={t.workType}
-                                style={{ width: "100%", padding: 4, marginBottom: 5, border: "1px solid #e0e0e0", borderRadius: 4 }}
-                              />
+                              <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 5, flexWrap: "wrap" }}>
+                                <label style={{ fontSize: "0.85rem", color: "#666", minWidth: 50 }}>{t.workType}:</label>
+                                <select
+                                  value={ruleWorkType}
+                                  onChange={(e) => updateWorkRule(rule.id, { workType: e.target.value as WorkRuleType })}
+                                  style={{ padding: 4, border: "1px solid #e0e0e0", borderRadius: 4, fontSize: "0.9rem" }}
+                                >
+                                  {WORK_RULE_TYPES.map((wt) => (
+                                    <option key={wt} value={wt}>{wt}</option>
+                                  ))}
+                                </select>
+                                <span style={{ fontSize: "0.85rem", color: "#666" }}>{t.workRuleTitle}:</span>
+                                <input
+                                  type="text"
+                                  value={localWorkRuleTitles[rule.id] ?? rule.title ?? ""}
+                                  onChange={(e) => setLocalWorkRuleTitles((prev) => ({ ...prev, [rule.id]: e.target.value }))}
+                                  onBlur={() => {
+                                    const title = (localWorkRuleTitles[rule.id] ?? rule.title ?? "").trim();
+                                    updateWorkRule(rule.id, { title: title || undefined });
+                                    setLocalWorkRuleTitles((prev) => {
+                                      const next = { ...prev };
+                                      delete next[rule.id];
+                                      return next;
+                                    });
+                                  }}
+                                  placeholder={t.workRuleTitle}
+                                  style={{ flex: 1, minWidth: 120, padding: 4, border: "1px solid #e0e0e0", borderRadius: 4 }}
+                                />
+                              </div>
                               <div style={{ display: "flex", gap: 10, marginBottom: 5 }}>
                                 <input
                                   type="number"
@@ -815,14 +913,14 @@ export default function TransactionBuilderPage() {
                             </>
                           ) : (
                             <div>
-                              <div style={{ fontWeight: "600" }}>{rule.workType}</div>
+                              <div style={{ fontWeight: "600" }}>{rule.title || rule.workType}</div>
                               <div style={{ fontSize: "0.85rem", color: "#666" }}>
-                                {t.quantity}: {rule.quantity} | {t.frequency}: {rule.frequency}
+                                {rule.workType} · {t.quantity}: {rule.quantity} | {t.frequency}: {rule.frequency}
                               </div>
                             </div>
                           )}
                         </div>
-                      ))}
+                      ); })}
                     </div>
 
                     {/* Work Items (Active Block Only) */}

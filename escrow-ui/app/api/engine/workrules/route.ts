@@ -16,7 +16,8 @@ export async function POST(request: NextRequest) {
     }
     
     const rule = store.addWorkRule(body.blockId, {
-      workType: body.workType,
+      workType: body.workType || "CUSTOM",
+      title: body.title,
       description: body.description,
       quantity: body.quantity || 1,
       frequency: body.frequency || "ONCE",
