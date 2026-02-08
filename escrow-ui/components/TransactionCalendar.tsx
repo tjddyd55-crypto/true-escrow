@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import type { Block, TimelineSegment } from "@/lib/transaction-engine/types";
+import type { Block, TimelineSegment, ApprovalPolicy, BlockApprover } from "@/lib/transaction-engine/types";
 import { getSegmentAtDate, getTimelineSegments } from "@/lib/transaction-engine/timelineSegments";
 import {
   addDays,
@@ -9,7 +9,7 @@ import {
   daysBetween,
   formatShortDate,
   formatShortRange,
-  formatMonthYear,
+  formatMonthYearDisplay,
   getMonthKey,
   monthStart,
   monthEnd,
@@ -17,28 +17,49 @@ import {
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-/** Distinct colors per block so "which phase" is obvious at a glance (calendar + builder) */
+/** Block 1 Blue, Block 2 Green, Block 3 Purple — index-based (calendar + builder) */
 export const BLOCK_COLORS = [
   "#bbdefb", // blue
   "#c8e6c9", // green
+  "#e1bee7", // purple
   "#ffe0b2", // orange
   "#f8bbd9", // pink
-  "#e1bee7", // purple
   "#b2ebf2", // cyan
 ];
+
+export type CalendarBlockMeta = {
+  policyType?: string;
+  approverCount?: number;
+};
 
 type Props = {
   txStartDate: string;
   txEndDate: string;
   blocks: Block[];
   title?: string;
+  /** Optional: show Approval Policy + Approver count in tooltip */
+  approvalPolicies?: ApprovalPolicy[];
+  blockApprovers?: BlockApprover[];
+  /** Highlight today's date (e.g. Buyer/Seller view) */
+  highlightToday?: boolean;
+  /** When true, emphasize the block that contains today ("Current Block") */
+  highlightCurrentBlock?: boolean;
 };
 
 /**
- * Calendar: month header with prev/next, blocks as colored bars (distinct color per block),
- * gap = grey dashed. Read-only, tooltip = date range + duration. Covers entire transaction range.
+ * Calendar: timeline visualization for transaction structure.
+ * Block = colored; Idle = gray dashed. Read-only. Tooltip = title, period, Approval Policy, Approver count.
  */
-export function TransactionCalendar({ txStartDate, txEndDate, blocks, title }: Props) {
+export function TransactionCalendar({
+  txStartDate,
+  txEndDate,
+  blocks,
+  title,
+  approvalPolicies = [],
+  blockApprovers = [],
+  highlightToday = false,
+  highlightCurrentBlock = false,
+}: Props) {
   const segments = useMemo(
     () => getTimelineSegments(txStartDate, txEndDate, blocks),
     [txStartDate, txEndDate, blocks]
@@ -59,13 +80,23 @@ export function TransactionCalendar({ txStartDate, txEndDate, blocks, title }: P
   const monthStartIso = currentMonthKey + "-01";
   const monthEndIso = monthEnd(monthStartIso);
 
+  /** Block index (orderIndex) → color: Block 1 Blue, Block 2 Green, Block 3 Purple. Same block = same color. */
   const blockColorMap = useMemo(() => {
     const m = new Map<string, string>();
-    segments.forEach((seg, idx) => {
-      if (seg.type === "block") m.set(seg.block.id, BLOCK_COLORS[idx % BLOCK_COLORS.length]);
+    const sorted = [...blocks].sort((a, b) => a.orderIndex - b.orderIndex);
+    sorted.forEach((b, idx) => m.set(b.id, BLOCK_COLORS[idx % BLOCK_COLORS.length]));
+    return m;
+  }, [blocks]);
+
+  const blockMetaMap = useMemo(() => {
+    const m = new Map<string, CalendarBlockMeta>();
+    blocks.forEach((b) => {
+      const policy = approvalPolicies.find((p) => p.id === b.approvalPolicyId);
+      const count = blockApprovers.filter((a) => a.blockId === b.id).length;
+      m.set(b.id, { policyType: policy?.type, approverCount: count });
     });
     return m;
-  }, [segments]);
+  }, [blocks, approvalPolicies, blockApprovers]);
 
   const totalDaysInMonth = daysBetween(monthStartIso, monthEndIso);
   const start = new Date(monthStartIso + "T12:00:00Z");
@@ -99,15 +130,43 @@ export function TransactionCalendar({ txStartDate, txEndDate, blocks, title }: P
   const inTxRange = (date: string) =>
     compareDate(date, txStartDate) >= 0 && compareDate(date, txEndDate) <= 0;
 
+  const todayIso = useMemo(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  }, []);
+
+  /** Block that contains today (for "Current Block" emphasis when highlightCurrentBlock) */
+  const currentBlockId = useMemo(() => {
+    if (!highlightCurrentBlock) return null;
+    const seg = getSegmentAtDate(segments, todayIso);
+    return seg?.type === "block" ? seg.block.id : null;
+  }, [highlightCurrentBlock, segments, todayIso]);
+
   const tooltipFor = (cell: { date: string; seg: TimelineSegment | undefined }) => {
-    if (!cell.date || !cell.seg) return formatShortDate(cell.date);
+    if (!cell.date) return "";
+    if (!cell.seg) return formatShortDate(cell.date);
     if (cell.seg.type === "block") {
       const b = cell.seg.block;
       const dur = daysBetween(b.startDate, b.endDate);
-      return `${b.title}\n${formatShortRange(b.startDate, b.endDate)} (${dur} days)`;
+      const meta = blockMetaMap.get(b.id);
+      const approvalStr =
+        meta?.policyType != null && meta?.approverCount != null
+          ? `Approval: ${meta.policyType} (${meta.approverCount})`
+          : meta?.policyType != null
+            ? `Approval: ${meta.policyType}`
+            : meta?.approverCount != null
+              ? `Approvers: ${meta.approverCount}`
+              : "";
+      const lines = [
+        b.title,
+        `${b.startDate} ~ ${b.endDate}`,
+        `${dur} days`,
+        approvalStr,
+      ].filter(Boolean);
+      return lines.join("\n");
     }
     const dur = daysBetween(cell.seg.startDate, cell.seg.endDate);
-    return `${formatShortRange(cell.seg.startDate, cell.seg.endDate)} (${dur} days)`;
+    return `Idle\n${cell.seg.startDate} ~ ${cell.seg.endDate}\n${dur} days`;
   };
 
   /** Same segment (block or gap) on prev/next day → hide inner border for continuous bar */
@@ -136,7 +195,7 @@ export function TransactionCalendar({ txStartDate, txEndDate, blocks, title }: P
     <div style={{ marginBottom: 24 }}>
       {title && <h3 style={{ fontSize: "1.1rem", marginBottom: 10 }}>{title}</h3>}
 
-      {/* Month header: "◀ 2026 February ▶" — clear which month, navigate entire tx range */}
+      {/* Header: ◀  February 2026  ▶ — current month clear, transaction range outside = gray below */}
       <div
         style={{
           display: "flex",
@@ -158,14 +217,14 @@ export function TransactionCalendar({ txStartDate, txEndDate, blocks, title }: P
             borderRadius: 6,
             background: monthIndex <= 0 ? "#f5f5f5" : "white",
             cursor: monthIndex <= 0 ? "not-allowed" : "pointer",
-            fontSize: "1rem",
+            fontSize: "1.1rem",
             fontWeight: "600",
           }}
         >
           ◀
         </button>
         <span style={{ fontWeight: "700", fontSize: "1.25rem", color: "#111" }}>
-          {formatMonthYear(monthStartIso)}
+          {formatMonthYearDisplay(monthStartIso)}
         </span>
         <button
           type="button"
@@ -178,7 +237,7 @@ export function TransactionCalendar({ txStartDate, txEndDate, blocks, title }: P
             borderRadius: 6,
             background: monthIndex >= monthsInRange.length - 1 ? "#f5f5f5" : "white",
             cursor: monthIndex >= monthsInRange.length - 1 ? "not-allowed" : "pointer",
-            fontSize: "1rem",
+            fontSize: "1.1rem",
             fontWeight: "600",
           }}
         >
@@ -213,28 +272,33 @@ export function TransactionCalendar({ txStartDate, txEndDate, blocks, title }: P
                   <div key={ci} style={{ minHeight: 36, border: "1px solid #eee" }} />
                 );
               }
-              const inRange = inTxRange(cell.date);
+              const inTransaction = inTxRange(cell.date);
               const isBlock = cell.seg?.type === "block";
               const isGap = cell.seg?.type === "gap";
               const block = cell.seg?.type === "block" ? cell.seg.block : null;
-              const bg = isBlock && block
-                ? blockColorMap.get(block.id) ?? "#e3f2fd"
-                : isGap
-                  ? "#f0f0f0"
-                  : inRange
-                    ? "#fafafa"
-                    : "#fafafa";
+              // Transaction range outside = gray (읽기 전용, 기간 밖은 회색)
+              const bg = !inTransaction
+                ? "#e8e8e8"
+                : isBlock && block
+                  ? blockColorMap.get(block.id) ?? "#bbdefb"
+                  : isGap
+                    ? "#e0e0e0"
+                    : "#f5f5f5";
+              const textColor = !inTransaction ? "#999" : isGap ? "#666" : "#333";
               const isBlockStart = isBlock && block && cell.date === block.startDate;
               const isBlockEnd = isBlock && block && cell.date === block.endDate;
               const samePrev = sameSegmentPrev(cell.date, cell.seg);
               const sameNext = sameSegmentNext(cell.date, cell.seg);
               const borderLeft = samePrev ? "none" : isGap ? "1px dashed #999" : "1px solid #e0e0e0";
               const borderRight = sameNext ? "none" : isGap ? "1px dashed #999" : "1px solid #e0e0e0";
+              const isToday = cell.date === todayIso;
+              const showTodayStrong = highlightToday && isToday;
+              const isCurrentBlock = highlightCurrentBlock && block && currentBlockId === block.id;
               return (
                 <div
                   key={ci}
                   style={{
-                    minHeight: 40,
+                    minHeight: 46,
                     padding: 4,
                     borderTop: isGap ? "1px dashed #999" : "1px solid #e0e0e0",
                     borderBottom: isGap ? "1px dashed #999" : "1px solid #e0e0e0",
@@ -246,14 +310,27 @@ export function TransactionCalendar({ txStartDate, txEndDate, blocks, title }: P
                     flexDirection: "column",
                     alignItems: "center",
                     justifyContent: "center",
-                    color: isGap ? "#666" : "#333",
+                    color: textColor,
                     borderRadius: isBlockStart && isBlockEnd ? 6 : isBlockStart ? "6px 0 0 6px" : isBlockEnd ? "0 6px 6px 0" : 0,
                     cursor: "default",
+                    ...(isCurrentBlock
+                      ? { boxShadow: "inset 0 0 0 2px #0d9488" }
+                      : isToday
+                        ? { boxShadow: showTodayStrong ? "inset 0 0 0 2px #0070f3" : "inset 0 0 0 1px #0070f3" }
+                        : {}),
                   }}
                   title={tooltipFor(cell)}
                 >
-                  <span>{new Date(cell.date + "T12:00:00Z").getUTCDate()}</span>
-                  {isBlockStart && block ? (
+                  {isCurrentBlock && isBlockStart && block ? (
+                    <span style={{ fontSize: "0.5rem", color: "#0d9488", fontWeight: "700", marginBottom: 1 }}>Current</span>
+                  ) : null}
+                  <span style={{ display: "flex", alignItems: "center", gap: 2 }}>
+                    {isToday && <span style={{ fontSize: "0.5rem", lineHeight: 1 }}>●</span>}
+                    <span style={{ fontWeight: showTodayStrong ? "700" : isToday ? "600" : "400" }}>
+                      {new Date(cell.date + "T12:00:00Z").getUTCDate()}
+                    </span>
+                  </span>
+                  {isBlock && block ? (
                     <span
                       style={{
                         fontSize: "0.65rem",
@@ -274,12 +351,13 @@ export function TransactionCalendar({ txStartDate, txEndDate, blocks, title }: P
           </div>
         ))}
       </div>
-      <div style={{ display: "flex", gap: 16, marginTop: 8, fontSize: "0.8rem", color: "#666", flexWrap: "wrap" }}>
-        <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <span style={{ width: 14, height: 14, backgroundColor: "#e3f2fd", border: "1px solid #e0e0e0" }} /> Block
+      {/* Legend: ■ Block  □ Idle — very small, bottom */}
+      <div style={{ display: "flex", gap: 12, marginTop: 6, fontSize: "0.65rem", color: "#888", flexWrap: "wrap" }}>
+        <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
+          <span style={{ width: 8, height: 8, backgroundColor: BLOCK_COLORS[0], border: "1px solid rgba(0,0,0,0.08)", borderRadius: 1 }} /> Block
         </span>
-        <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <span style={{ width: 14, height: 14, backgroundColor: "#f0f0f0", border: "2px dashed #999" }} /> —
+        <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
+          <span style={{ width: 8, height: 8, backgroundColor: "#e0e0e0", border: "1px dashed #999", borderRadius: 1 }} /> Idle
         </span>
       </div>
     </div>

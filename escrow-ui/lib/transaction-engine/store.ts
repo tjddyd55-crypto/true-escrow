@@ -529,6 +529,25 @@ export function approveWorkItem(itemId: string): WorkItem {
   return item;
 }
 
+export function rejectWorkItem(itemId: string): WorkItem {
+  const item = workItems.find((i) => i.id === itemId);
+  if (!item) {
+    throw new Error("WorkItem not found");
+  }
+  if (item.status !== "SUBMITTED") {
+    throw new Error("Only SUBMITTED items can be rejected");
+  }
+
+  item.status = "REJECTED";
+  const rule = workRules.find((r) => r.id === item.workRuleId);
+  const block = rule ? blocks.find((b) => b.id === rule.blockId) : null;
+  if (block) {
+    appendLog(block.transactionId, "BUYER", "WORK_ITEM_REJECTED", { itemId });
+  }
+  saveToFile();
+  return item;
+}
+
 export function approveBlock(blockId: string): Block {
   const block = blocks.find((b) => b.id === blockId);
   if (!block) {

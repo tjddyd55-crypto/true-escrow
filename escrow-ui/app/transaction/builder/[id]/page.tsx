@@ -16,8 +16,7 @@ import type {
   WorkRuleType,
   ApprovalPolicyType,
 } from "@/lib/transaction-engine/types";
-import { daysBetween, formatShortRange } from "@/lib/transaction-engine/dateUtils";
-import { getTimelineSegments } from "@/lib/transaction-engine/timelineSegments";
+import { daysBetween } from "@/lib/transaction-engine/dateUtils";
 import { TransactionCalendar, BLOCK_COLORS } from "@/components/TransactionCalendar";
 
 export default function TransactionBuilderPage() {
@@ -1021,75 +1020,24 @@ export default function TransactionBuilderPage() {
             </div>
           </div>
 
-          {/* Timeline Preview (blocks + gap blocks) */}
+          {/* Timeline: 설계 결과를 “실제 날짜 기준으로 어떻게 흘러가는지” 한눈에 보는 시각화. 읽기 전용. */}
           <div style={{ marginBottom: 40 }}>
             <h2 style={{ fontSize: "1.8rem", marginBottom: 20 }}>{t.timeline}</h2>
-            <div style={{ border: "1px solid #e0e0e0", borderRadius: 8, padding: 20 }}>
-              {!txStart || !txEnd ? (
-                <p style={{ color: "#666", textAlign: "center" }}>Set transaction start/end date</p>
-              ) : (
-                <div style={{ display: "grid", gap: 10 }}>
-                  {getTimelineSegments(txStart, txEnd, graph.blocks).map((seg, idx) =>
-                    seg.type === "block" ? (
-                      <div
-                        key={seg.block.id}
-                        style={{
-                          display: "flex",
-                          justifyContent: "space-between",
-                          alignItems: "center",
-                          padding: 12,
-                          backgroundColor: seg.block.isActive ? "#f0f9ff" : "#f8f9fa",
-                          borderRadius: 4,
-                        }}
-                      >
-                        <span>{formatShortRange(seg.block.startDate, seg.block.endDate)}</span>
-                        <span style={{ fontWeight: "600" }}>{seg.block.title}</span>
-                        <span
-                          style={{
-                            padding: "2px 8px",
-                            borderRadius: 4,
-                            backgroundColor: seg.block.isActive ? "#00b894" : "#e0e0e0",
-                            color: seg.block.isActive ? "white" : "#666",
-                            fontSize: "0.85rem",
-                          }}
-                        >
-                          {seg.block.isActive ? t.active : t.locked}
-                        </span>
-                      </div>
-                    ) : (
-                      <div
-                        key={`gap-${idx}-${seg.startDate}`}
-                        style={{
-                          display: "flex",
-                          justifyContent: "space-between",
-                          alignItems: "center",
-                          padding: 12,
-                          backgroundColor: "#f0f0f0",
-                          border: "2px dashed #999",
-                          borderRadius: 4,
-                          color: "#666",
-                        }}
-                      >
-                        <span>{formatShortRange(seg.startDate, seg.endDate)}</span>
-                        <span style={{ fontWeight: "500", color: "#999" }}>—</span>
-                        <span style={{ fontSize: "0.85rem", color: "#999" }}>—</span>
-                      </div>
-                    )
-                  )}
-                </div>
-              )}
-            </div>
+            {!txStart || !txEnd ? (
+              <p style={{ color: "#666", textAlign: "center", padding: 20, border: "1px solid #e0e0e0", borderRadius: 8 }}>
+                Set transaction start/end date to see the calendar.
+              </p>
+            ) : (
+              <TransactionCalendar
+                txStartDate={txStart}
+                txEndDate={txEnd}
+                blocks={graph.blocks}
+                approvalPolicies={graph.approvalPolicies}
+                blockApprovers={graph.blockApprovers}
+                title={t.calendar ?? "Calendar"}
+              />
+            )}
           </div>
-
-          {/* Calendar (blocks + gap blocks; no uncolored dates in range) */}
-          {txStart && txEnd && (
-            <TransactionCalendar
-              txStartDate={txStart}
-              txEndDate={txEnd}
-              blocks={graph.blocks}
-              title={t.calendar ?? "Calendar"}
-            />
-          )}
         </div>
 
         {/* Activity Log */}

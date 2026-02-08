@@ -58,6 +58,13 @@ export function formatMonthYear(iso: string): string {
   return `${d.getUTCFullYear()} ${months[d.getUTCMonth()]}`;
 }
 
+/** "February 2026" — for calendar header (month first) */
+export function formatMonthYearDisplay(iso: string): string {
+  const d = new Date(iso + "T12:00:00Z");
+  const months = "January February March April May June July August September October November December".split(" ");
+  return `${months[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
+}
+
 /** First day of month (YYYY-MM-DD), then add days for last day */
 export function monthStart(iso: string): string {
   return iso.slice(0, 7) + "-01";

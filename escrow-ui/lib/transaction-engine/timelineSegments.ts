@@ -3,8 +3,8 @@
  * Gap = no label, no meaning, no rules. No uncolored dates within transaction range.
  */
 
-import type { Block, TimelineSegment } from "./types";
-import { addDays, compareDate } from "./dateUtils";
+import type { Block, TimelineSegment, CalendarDay } from "./types";
+import { addDays, compareDate, daysBetween } from "./dateUtils";
 
 /**
  * Build ordered list of segments (blocks and gaps) covering [txStartDate, txEndDate].
@@ -80,4 +80,38 @@ export function getSegmentAtDate(
     }
   }
   return undefined;
+}
+
+/**
+ * Step 1: allDays = transaction.startDate → endDate
+ * Step 2: Block overlay → mark days in block range as BLOCK
+ * Step 3: Days in transaction range not in any block = IDLE
+ */
+export function getCalendarDays(
+  txStartDate: string,
+  txEndDate: string,
+  segments: TimelineSegment[],
+  blockColorMap: Map<string, string>,
+  blockIndexById?: Map<string, number>
+): CalendarDay[] {
+  const days: CalendarDay[] = [];
+  const n = daysBetween(txStartDate, txEndDate);
+  for (let i = 0; i < n; i++) {
+    const date = addDays(txStartDate, i);
+    const seg = getSegmentAtDate(segments, date);
+    if (seg?.type === "block") {
+      days.push({
+        date,
+        inTransaction: true,
+        type: "BLOCK",
+        blockId: seg.block.id,
+        blockTitle: seg.block.title,
+        blockIndex: blockIndexById?.get(seg.block.id),
+        color: blockColorMap.get(seg.block.id),
+      });
+    } else {
+      days.push({ date, inTransaction: true, type: "IDLE" });
+    }
+  }
+  return days;
 }

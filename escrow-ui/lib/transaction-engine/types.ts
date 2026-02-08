@@ -41,6 +41,17 @@ export type TimelineSegment =
   | { type: "block"; block: Block }
   | { type: "gap"; startDate: string; endDate: string };
 
+/** Single day in calendar: BLOCK or IDLE (for timeline visualization). SSOT for calendar cell. */
+export type CalendarDay = {
+  date: string;
+  inTransaction: boolean;
+  type: "BLOCK" | "IDLE";
+  blockId?: string;
+  blockTitle?: string;
+  blockIndex?: number;
+  color?: string;
+};
+
 export type ApprovalPolicy = {
   id: string;
   type: ApprovalPolicyType;

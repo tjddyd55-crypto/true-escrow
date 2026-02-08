@@ -74,16 +74,17 @@ export default function TransactionsPage() {
                   {tx.status}
                 </span>
               </div>
-              <Link
-                href={`/transaction/builder/${tx.id}`}
-                style={{
-                  color: "#0070f3",
-                  textDecoration: "none",
-                  fontSize: "0.9rem",
-                }}
-              >
-                Open Builder →
-              </Link>
+              <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+                <Link href={`/transaction/builder/${tx.id}`} style={{ color: "#0070f3", textDecoration: "none", fontSize: "0.9rem" }}>
+                  Builder
+                </Link>
+                <Link href={`/transaction/${tx.id}/buyer`} style={{ color: "#0d9488", textDecoration: "none", fontSize: "0.9rem" }}>
+                  Buyer
+                </Link>
+                <Link href={`/transaction/${tx.id}/seller`} style={{ color: "#7c3aed", textDecoration: "none", fontSize: "0.9rem" }}>
+                  Seller
+                </Link>
+              </div>
             </li>
           ))}
         </ul>
