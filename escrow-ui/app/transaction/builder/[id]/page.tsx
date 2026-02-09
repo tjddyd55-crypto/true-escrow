@@ -18,6 +18,7 @@ import type {
 } from "@/lib/transaction-engine/types";
 import { daysBetween } from "@/lib/transaction-engine/dateUtils";
 import { TransactionCalendar, BLOCK_COLORS } from "@/components/TransactionCalendar";
+import { useAutoSave, useAutoSaveByKey, SaveStatusIndicator } from "@/lib/hooks/useAutoSave";
 
 export default function TransactionBuilderPage() {
   const params = useParams();
@@ -30,6 +31,12 @@ export default function TransactionBuilderPage() {
   const [editingWorkRule, setEditingWorkRule] = useState<string | null>(null);
   const [localBlockTitles, setLocalBlockTitles] = useState<Record<string, string>>({});
   const [localWorkRuleTitles, setLocalWorkRuleTitles] = useState<Record<string, string>>({});
+  const [localTxTitle, setLocalTxTitle] = useState<string | undefined>(undefined);
+  const [localTxDesc, setLocalTxDesc] = useState<string | undefined>(undefined);
+  const { status: saveStatusTxTitle, triggerSave: triggerSaveTxTitle } = useAutoSave();
+  const { status: saveStatusTxDesc, triggerSave: triggerSaveTxDesc } = useAutoSave();
+  const { getStatus: getBlockSaveStatus, triggerSave: triggerSaveBlock } = useAutoSaveByKey();
+  const { getStatus: getWorkRuleSaveStatus, triggerSave: triggerSaveWorkRule } = useAutoSaveByKey();
   const [addApproverBlockId, setAddApproverBlockId] = useState<string | null>(null);
   const [addApproverRole, setAddApproverRole] = useState<ApproverRole>("VERIFIER");
   const [addApproverDisplayName, setAddApproverDisplayName] = useState("");
@@ -74,21 +81,19 @@ export default function TransactionBuilderPage() {
     }
   }
 
-  async function updateTransaction(patch: Partial<Transaction>) {
+  async function updateTransaction(patch: Partial<Transaction>): Promise<void> {
     if (!graph || graph.transaction.status !== "DRAFT") return;
 
-    try {
-      const res = await fetch(`/api/engine/transactions/${transactionId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(patch),
-      });
-      if (res.ok) {
-        fetchData();
-      }
-    } catch (error) {
-      console.error("Failed to update transaction:", error);
+    const res = await fetch(`/api/engine/transactions/${transactionId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(patch),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || "Failed to update transaction");
     }
+    await fetchData();
   }
 
   async function addBlock() {
@@ -121,25 +126,31 @@ export default function TransactionBuilderPage() {
     }
   }
 
-  async function updateBlock(blockId: string, patch: Partial<Block>) {
+  async function updateBlock(blockId: string, patch: Partial<Block>): Promise<void> {
     if (!graph || graph.transaction.status !== "DRAFT") return;
-
-    try {
-      const res = await fetch("/api/engine/blocks", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: blockId, patch }),
-      });
-      if (res.ok) {
-        fetchData();
-      }
-    } catch (error) {
-      console.error("Failed to update block:", error);
+    if (blockId == null || blockId === "") {
+      console.warn("[Builder] updateBlock: blockId is undefined or empty");
+      return;
     }
+
+    const res = await fetch("/api/engine/blocks", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: blockId, patch }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || "Failed to update block");
+    }
+    await fetchData();
   }
 
   async function updateApprovalPolicyType(policyId: string, type: ApprovalPolicyType) {
     if (!graph || graph.transaction.status !== "DRAFT") return;
+    if (policyId == null || policyId === "") {
+      console.warn("[Builder] updateApprovalPolicyType: policyId is undefined or empty");
+      return;
+    }
 
     try {
       const res = await fetch(`/api/engine/approval-policies/${policyId}`, {
@@ -155,6 +166,10 @@ export default function TransactionBuilderPage() {
 
   async function deleteBlock(blockId: string) {
     if (!graph || graph.transaction.status !== "DRAFT") return;
+    if (blockId == null || blockId === "") {
+      console.warn("[Builder] deleteBlock: blockId is undefined or empty");
+      return;
+    }
 
     try {
       const res = await fetch(`/api/engine/blocks?id=${blockId}`, {
@@ -190,26 +205,31 @@ export default function TransactionBuilderPage() {
     }
   }
 
-  async function updateWorkRule(ruleId: string, patch: Partial<WorkRule>) {
+  async function updateWorkRule(ruleId: string, patch: Partial<WorkRule>): Promise<void> {
     if (!graph || graph.transaction.status !== "DRAFT") return;
-
-    try {
-      const res = await fetch(`/api/engine/workrules/${ruleId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(patch),
-      });
-      if (res.ok) {
-        fetchData();
-      }
-    } catch (error) {
-      console.error("Failed to update work rule:", error);
+    if (ruleId == null || ruleId === "") {
+      console.warn("[Builder] updateWorkRule: ruleId is undefined or empty");
+      return;
     }
+
+    const res = await fetch(`/api/engine/workrules/${ruleId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(patch),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || "Failed to update work rule");
+    }
+    await fetchData();
   }
 
   async function deleteWorkRule(workRuleId: string) {
     if (!graph || graph.transaction.status !== "DRAFT") return;
-    if (!workRuleId) return;
+    if (workRuleId == null || workRuleId === "") {
+      console.warn("[Builder] deleteWorkRule: workRuleId is undefined or empty");
+      return;
+    }
 
     try {
       const res = await fetch(`/api/engine/workrules/${workRuleId}`, {
@@ -310,7 +330,14 @@ export default function TransactionBuilderPage() {
 
   async function deleteApprover(approverId: string, blockId: string) {
     if (!graph || graph.transaction.status !== "DRAFT") return;
-    if (!approverId) return;
+    if (approverId == null || approverId === "") {
+      console.warn("[Builder] deleteApprover: approverId is undefined or empty");
+      return;
+    }
+    if (blockId == null || blockId === "") {
+      console.warn("[Builder] deleteApprover: blockId is undefined or empty");
+      return;
+    }
 
     try {
       const res = await fetch(`/api/engine/blocks/${blockId}/approvers/${approverId}`, {
@@ -334,6 +361,14 @@ export default function TransactionBuilderPage() {
 
   async function updateApprover(approverId: string, blockId: string, patch: { required?: boolean; role?: string; userId?: string }) {
     if (!graph || graph.transaction.status !== "DRAFT") return;
+    if (approverId == null || approverId === "") {
+      console.warn("[Builder] updateApprover: approverId is undefined or empty");
+      return;
+    }
+    if (blockId == null || blockId === "") {
+      console.warn("[Builder] updateApprover: blockId is undefined or empty");
+      return;
+    }
 
     try {
       const res = await fetch(`/api/engine/blocks/${blockId}/approvers/${approverId}`, {
@@ -405,22 +440,46 @@ export default function TransactionBuilderPage() {
       </div>
 
       {/* Transaction Header */}
-      <div style={{ marginBottom: 30, padding: 20, border: "1px solid #e0e0e0", borderRadius: 8 }}>
+      <div style={{ marginBottom: 30, padding: 20, border: "1px solid #e0e0e0", borderRadius: 8, position: "relative" }}>
         {isDraft ? (
           <>
-            <input
-              type="text"
-              value={graph.transaction.title}
-              onChange={(e) => updateTransaction({ title: e.target.value })}
-              style={{ width: "100%", padding: 8, fontSize: "1.2rem", fontWeight: "600", border: "1px solid #e0e0e0", borderRadius: 4, marginBottom: 10 }}
-            />
-            <textarea
-              value={graph.transaction.description || ""}
-              onChange={(e) => updateTransaction({ description: e.target.value })}
-              placeholder={t.transactionDescription}
-              rows={2}
-              style={{ width: "100%", padding: 8, border: "1px solid #e0e0e0", borderRadius: 4, marginBottom: 10 }}
-            />
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+              <input
+                type="text"
+                value={localTxTitle ?? graph.transaction.title ?? ""}
+                onChange={(e) => setLocalTxTitle(e.target.value)}
+                onBlur={() => {
+                  const title = (localTxTitle ?? graph.transaction.title ?? "").trim();
+                  const serverTitle = (graph.transaction.title ?? "").trim();
+                  setLocalTxTitle(undefined);
+                  if (title === serverTitle) return;
+                  triggerSaveTxTitle(async () => {
+                    await updateTransaction({ title: title || undefined });
+                  });
+                }}
+                style={{ flex: 1, padding: 8, fontSize: "1.2rem", fontWeight: "600", border: "1px solid #e0e0e0", borderRadius: 4 }}
+              />
+              <SaveStatusIndicator status={saveStatusTxTitle} />
+            </div>
+            <div style={{ display: "flex", alignItems: "flex-start", gap: 8, marginBottom: 10 }}>
+              <textarea
+                value={localTxDesc ?? graph.transaction.description ?? ""}
+                onChange={(e) => setLocalTxDesc(e.target.value)}
+                onBlur={() => {
+                  const description = (localTxDesc ?? graph.transaction.description ?? "").trim();
+                  const serverDesc = (graph.transaction.description ?? "").trim();
+                  setLocalTxDesc(undefined);
+                  if (description === serverDesc) return;
+                  triggerSaveTxDesc(async () => {
+                    await updateTransaction({ description: description || undefined });
+                  });
+                }}
+                placeholder={t.transactionDescription}
+                rows={2}
+                style={{ flex: 1, padding: 8, border: "1px solid #e0e0e0", borderRadius: 4 }}
+              />
+              <SaveStatusIndicator status={saveStatusTxDesc} />
+            </div>
           </>
         ) : (
           <>
@@ -540,16 +599,20 @@ export default function TransactionBuilderPage() {
                               onChange={(e) => setLocalBlockTitles((prev) => ({ ...prev, [block.id]: e.target.value }))}
                               onBlur={() => {
                                 const title = (localBlockTitles[block.id] ?? block.title).trim();
-                                updateBlock(block.id, { title });
                                 setLocalBlockTitles((prev) => {
                                   const next = { ...prev };
                                   delete next[block.id];
                                   return next;
                                 });
+                                if (title === (block.title ?? "").trim()) return;
+                                triggerSaveBlock(block.id, async () => {
+                                  await updateBlock(block.id, { title });
+                                });
                               }}
                               placeholder={t.blockTitle}
                               style={{ flex: 1, padding: 8, fontSize: "1.1rem", fontWeight: "600", border: "1px solid #e0e0e0", borderRadius: 4 }}
                             />
+                            <SaveStatusIndicator status={getBlockSaveStatus(block.id)} />
                           </div>
                         ) : (
                           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 5 }}>
@@ -850,17 +913,25 @@ export default function TransactionBuilderPage() {
                                   value={localWorkRuleTitles[rule.id] ?? rule.title ?? ""}
                                   onChange={(e) => setLocalWorkRuleTitles((prev) => ({ ...prev, [rule.id]: e.target.value }))}
                                   onBlur={() => {
+                                    if (rule.id == null || rule.id === "") {
+                                      console.warn("[Builder] WorkRule title onBlur: rule.id is undefined or empty");
+                                      return;
+                                    }
                                     const title = (localWorkRuleTitles[rule.id] ?? rule.title ?? "").trim();
-                                    updateWorkRule(rule.id, { title: title || undefined });
                                     setLocalWorkRuleTitles((prev) => {
                                       const next = { ...prev };
                                       delete next[rule.id];
                                       return next;
                                     });
+                                    if (title === (rule.title ?? "").trim()) return;
+                                    triggerSaveWorkRule(rule.id, async () => {
+                                      await updateWorkRule(rule.id, { title: title || undefined });
+                                    });
                                   }}
                                   placeholder={t.workRuleTitle}
                                   style={{ flex: 1, minWidth: 120, padding: 4, border: "1px solid #e0e0e0", borderRadius: 4 }}
                                 />
+                                <SaveStatusIndicator status={getWorkRuleSaveStatus(rule.id)} />
                               </div>
                               <div style={{ display: "flex", gap: 10, marginBottom: 5 }}>
                                 <input

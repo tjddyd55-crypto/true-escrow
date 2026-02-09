@@ -17,6 +17,7 @@ import type {
 } from "./types";
 import { appendLog } from "./log";
 import { addDays, daysBetween } from "./dateUtils";
+import crypto from "crypto";
 import fs from "fs";
 import path from "path";
 
@@ -103,9 +104,9 @@ if (typeof window === "undefined") {
   loadFromFile();
 }
 
-// Helper functions
+/** Stable UUID for all entities. Never use array index, role, or type as identifier. */
 function generateId(): string {
-  return `id-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  return crypto.randomUUID();
 }
 
 function findTransaction(id: string): Transaction | undefined {
