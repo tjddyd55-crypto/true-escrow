@@ -52,6 +52,26 @@ function migrateLoadedData(): void {
       (block as Block).endDate = addDays(base, 6);
     }
   });
+  ensureUniqueWorkRuleIds();
+}
+
+/** Ensure every work rule has a unique id; fix workItems references. Call after load or before returning graph. */
+function ensureUniqueWorkRuleIds(): void {
+  const seen = new Set<string>();
+  workRules.forEach((wr) => {
+    if (!wr.id || seen.has(wr.id)) {
+      const oldId = wr.id;
+      (wr as WorkRule).id = generateId();
+      seen.add(wr.id);
+      if (oldId) {
+        workItems.filter((wi) => wi.workRuleId === oldId).forEach((wi) => {
+          (wi as { workRuleId: string }).workRuleId = wr.id;
+        });
+      }
+    } else {
+      seen.add(wr.id);
+    }
+  });
 }
 
 // Load from file if exists (dev only)
