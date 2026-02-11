@@ -75,4 +75,19 @@ export const ko = {
   loading: "로딩 중...",
   transactionNotFound: "거래를 찾을 수 없습니다",
   error: "오류",
+
+  // Template labels (i18n key 기반)
+  template: {
+    quick_delivery: {
+      title: "택배 / 중고 거래",
+      description: "배송 완료 확인 후 대금이 지급됩니다.",
+    },
+    moving_service: {
+      title: "이사 거래",
+      description: "이사 완료 확인 후 잔금이 지급됩니다.",
+    },
+    unknown: {
+      title: "템플릿",
+    },
+  },
 };

@@ -75,4 +75,19 @@ export const en = {
   loading: "Loading...",
   transactionNotFound: "Transaction not found",
   error: "Error",
+
+  // Template labels (i18n key based)
+  template: {
+    quick_delivery: {
+      title: "Delivery / Used Goods",
+      description: "Payment is released after delivery confirmation.",
+    },
+    moving_service: {
+      title: "Moving Service",
+      description: "Final payment is released after move completion confirmation.",
+    },
+    unknown: {
+      title: "Template",
+    },
+  },
 };

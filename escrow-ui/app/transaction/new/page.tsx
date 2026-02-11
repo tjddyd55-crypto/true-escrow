@@ -6,13 +6,14 @@ import { useI18n } from "@/lib/i18n/provider";
 
 interface Template {
   template_key: string;
-  label: string;
-  defaults?: { title?: string; description?: string; transaction?: { title?: string; description?: string } };
+  label_key: string;
+  description_key: string | null;
+  defaults?: Record<string, unknown>;
 }
 
 export default function NewTransactionPage() {
   const router = useRouter();
-  const { t, lang, setLang } = useI18n();
+  const { t, tKey, lang, setLang } = useI18n();
   const [templates, setTemplates] = useState<Template[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null);
@@ -164,11 +165,11 @@ export default function NewTransactionPage() {
               />
               <div>
                 <div style={{ fontSize: "1.1rem", fontWeight: "600", marginBottom: 4 }}>
-                  {template.label}
+                  {tKey(template.label_key)}
                 </div>
-                {(template.defaults?.description ?? (template.defaults as { transaction?: { description?: string } })?.transaction?.description) && (
+                {template.description_key && (
                   <div style={{ fontSize: "0.9rem", color: "#666" }}>
-                    {template.defaults?.description ?? (template.defaults as { transaction?: { description?: string } })?.transaction?.description}
+                    {tKey(template.description_key)}
                   </div>
                 )}
               </div>

@@ -8,10 +8,22 @@ type Language = "en" | "ko";
 
 const dictionaries = { en, ko };
 
+function getByPath(obj: Record<string, unknown>, path: string): string | undefined {
+  const keys = path.split(".");
+  let current: unknown = obj;
+  for (const k of keys) {
+    if (current == null || typeof current !== "object") return undefined;
+    current = (current as Record<string, unknown>)[k];
+  }
+  return typeof current === "string" ? current : undefined;
+}
+
 type I18nContextType = {
   lang: Language;
   setLang: (lang: Language) => void;
   t: typeof en;
+  /** Resolve i18n key (e.g. template.quick_delivery.title) to string. */
+  tKey: (key: string) => string;
 };
 
 const I18nContext = createContext<I18nContextType | null>(null);
@@ -38,9 +50,10 @@ export function I18nProvider({ children }: { children: ReactNode }) {
   };
 
   const t = dictionaries[lang];
+  const tKey = (key: string) => getByPath(t as Record<string, unknown>, key) ?? key;
 
   return (
-    <I18nContext.Provider value={{ lang, setLang, t }}>
+    <I18nContext.Provider value={{ lang, setLang, t, tKey }}>
       {children}
     </I18nContext.Provider>
   );

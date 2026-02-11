@@ -3,7 +3,8 @@ import { query } from "@/lib/db";
 
 export type EscrowTemplateRow = {
   template_key: string;
-  label: string;
+  label_key: string;
+  description_key: string | null;
   defaults: Record<string, unknown>;
 };
 
@@ -21,7 +22,7 @@ export async function GET() {
     console.log("[DEBUG] DB DEBUG:", debugResult.rows);
 
     const result = await query<EscrowTemplateRow>(`
-      SELECT template_key, label, defaults
+      SELECT template_key, label_key, description_key, defaults
       FROM escrow_templates
       WHERE is_active = true
       ORDER BY created_at ASC
