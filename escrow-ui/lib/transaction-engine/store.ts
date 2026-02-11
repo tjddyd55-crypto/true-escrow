@@ -29,7 +29,9 @@ let blockApprovers: BlockApprover[] = [];
 let workRules: WorkRule[] = [];
 let workItems: WorkItem[] = [];
 
-const DATA_FILE = path.join(process.cwd(), ".data", "transaction-engine.json");
+const DATA_FILE =
+  process.env.TRANSACTION_ENGINE_DATA_FILE ||
+  path.join(process.cwd(), ".data", "transaction-engine.json");
 
 // Migrate old data (startDay/endDay -> startDate/endDate)
 function migrateLoadedData(): void {
@@ -208,35 +210,45 @@ export function listTransactions(): Transaction[] {
 }
 
 export function saveTransactionGraph(graph: TransactionGraph): void {
-  // Update or insert transaction
-  const txIndex = transactions.findIndex((t) => t.id === graph.transaction.id);
+  // Idempotency: no duplicate ids in graph
+  const blockIds = new Set(graph.blocks.map((b) => b.id));
+  if (blockIds.size !== graph.blocks.length) throw new Error("Duplicate blocks detected");
+  const policyIds = new Set(graph.approvalPolicies.map((p) => p.id));
+  if (policyIds.size !== graph.approvalPolicies.length) throw new Error("Duplicate approvalPolicies detected");
+  const approverIds = new Set(graph.blockApprovers.map((a) => a.id));
+  if (approverIds.size !== graph.blockApprovers.length) throw new Error("Duplicate blockApprovers detected");
+  const ruleIds = new Set(graph.workRules.map((r) => r.id));
+  if (ruleIds.size !== graph.workRules.length) throw new Error("Duplicate workRules detected");
+  const itemIds = new Set(graph.workItems.map((w) => w.id));
+  if (itemIds.size !== graph.workItems.length) throw new Error("Duplicate workItems detected");
+
+  // Replace only: remove this graph's entities, then assign graph's (no append/merge)
+  const txId = graph.transaction.id;
+  const blockIdList = graph.blocks.map((b) => b.id);
+
+  const txIndex = transactions.findIndex((t) => t.id === txId);
   if (txIndex >= 0) {
     transactions[txIndex] = graph.transaction;
   } else {
     transactions.push(graph.transaction);
   }
 
-  // Replace all related entities
-  blocks = blocks.filter((b) => b.transactionId !== graph.transaction.id);
-  blocks.push(...graph.blocks);
+  blocks = blocks.filter((b) => b.transactionId !== txId);
+  blocks = blocks.concat(graph.blocks);
 
-  const blockIds = graph.blocks.map((b) => b.id);
-  approvalPolicies = approvalPolicies.filter((p) => 
-    graph.approvalPolicies.some((ap) => ap.id === p.id)
-  );
-  approvalPolicies.push(...graph.approvalPolicies);
+  const graphPolicyIds = new Set(graph.approvalPolicies.map((p) => p.id));
+  approvalPolicies = approvalPolicies.filter((p) => !graphPolicyIds.has(p.id));
+  approvalPolicies = approvalPolicies.concat(graph.approvalPolicies);
 
-  blockApprovers = blockApprovers.filter((ba) => blockIds.includes(ba.blockId));
-  blockApprovers.push(...graph.blockApprovers);
+  blockApprovers = blockApprovers.filter((ba) => !blockIdList.includes(ba.blockId));
+  blockApprovers = blockApprovers.concat(graph.blockApprovers);
 
-  workRules = workRules.filter((wr) => blockIds.includes(wr.blockId));
-  workRules.push(...graph.workRules);
+  workRules = workRules.filter((wr) => !blockIdList.includes(wr.blockId));
+  workRules = workRules.concat(graph.workRules);
 
-  workItems = workItems.filter((wi) => {
-    const workRule = workRules.find((wr) => wr.id === wi.workRuleId);
-    return workRule && blockIds.includes(workRule.blockId);
-  });
-  workItems.push(...graph.workItems);
+  const graphRuleIds = new Set(graph.workRules.map((r) => r.id));
+  workItems = workItems.filter((wi) => !graphRuleIds.has(wi.workRuleId));
+  workItems = workItems.concat(graph.workItems);
 
   saveToFile();
 }

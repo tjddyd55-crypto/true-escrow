@@ -54,20 +54,20 @@ export async function PATCH(
       return NextResponse.json({ ok: false, error: "Transaction not found" }, { status: 404 });
     }
     
-    // Update transaction fields (only in DRAFT)
+    // Update transaction fields (only in DRAFT). No TemplateSpec rebuild — load → mutate clone → replace.
     if (transaction.status !== "DRAFT") {
       return NextResponse.json({ ok: false, error: "Transaction can only be updated in DRAFT status" }, { status: 400 });
     }
-    
-    if (body.title !== undefined) transaction.title = body.title;
-    if (body.description !== undefined) transaction.description = body.description;
-    if (body.startDate !== undefined) transaction.startDate = body.startDate;
-    if (body.endDate !== undefined) transaction.endDate = body.endDate;
-    
-    // Save updated graph
+
+    const transactionCopy = structuredClone(transaction);
+    if (body.title !== undefined) transactionCopy.title = body.title;
+    if (body.description !== undefined) transactionCopy.description = body.description;
+    if (body.startDate !== undefined) transactionCopy.startDate = body.startDate;
+    if (body.endDate !== undefined) transactionCopy.endDate = body.endDate;
+
     const blocks = store.getBlocks(id);
     const graph = {
-      transaction,
+      transaction: transactionCopy,
       blocks,
       approvalPolicies: blocks.map((b) => store.getApprovalPolicy(b.approvalPolicyId)).filter(Boolean) as any[],
       blockApprovers: blocks.flatMap((b) => store.getBlockApprovers(b.id)),
@@ -75,8 +75,8 @@ export async function PATCH(
       workItems: blocks.flatMap((b) => store.getWorkItemsByBlock(b.id)),
     };
     store.saveTransactionGraph(graph);
-    
-    return NextResponse.json({ ok: true, data: transaction });
+
+    return NextResponse.json({ ok: true, data: transactionCopy });
   } catch (error: any) {
     return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
   }
