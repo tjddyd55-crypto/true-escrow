@@ -5,9 +5,9 @@ import { useRouter } from "next/navigation";
 import { useI18n } from "@/lib/i18n/provider";
 
 interface Template {
-  id: string;
-  title: string;
-  description: string;
+  template_key: string;
+  label: string;
+  defaults?: { title?: string; description?: string; transaction?: { title?: string; description?: string } };
 }
 
 export default function NewTransactionPage() {
@@ -25,7 +25,7 @@ export default function NewTransactionPage() {
 
   async function fetchTemplates() {
     try {
-      const res = await fetch("/api/engine/templates");
+      const res = await fetch("/api/escrow/templates");
       if (res.ok) {
         const data = await res.json();
         setTemplates(data.data || []);
@@ -54,7 +54,7 @@ export default function NewTransactionPage() {
       };
 
       if (selectedTemplate && selectedTemplate !== "blank") {
-        payload.templateId = selectedTemplate;
+        payload.template_key = selectedTemplate;
       }
 
       const res = await fetch("/api/engine/transactions", {
@@ -143,32 +143,34 @@ export default function NewTransactionPage() {
           </label>
           {templates.map((template) => (
             <label
-              key={template.id}
+              key={template.template_key}
               style={{
                 display: "flex",
                 alignItems: "center",
                 padding: 20,
-                border: selectedTemplate === template.id ? "2px solid #0070f3" : "1px solid #e0e0e0",
+                border: selectedTemplate === template.template_key ? "2px solid #0070f3" : "1px solid #e0e0e0",
                 borderRadius: 8,
                 cursor: "pointer",
-                backgroundColor: selectedTemplate === template.id ? "#f0f9ff" : "white",
+                backgroundColor: selectedTemplate === template.template_key ? "#f0f9ff" : "white",
               }}
             >
               <input
                 type="radio"
                 name="template"
-                value={template.id}
-                checked={selectedTemplate === template.id}
+                value={template.template_key}
+                checked={selectedTemplate === template.template_key}
                 onChange={(e) => setSelectedTemplate(e.target.value)}
                 style={{ marginRight: 15 }}
               />
               <div>
                 <div style={{ fontSize: "1.1rem", fontWeight: "600", marginBottom: 4 }}>
-                  {template.title}
+                  {template.label}
                 </div>
-                <div style={{ fontSize: "0.9rem", color: "#666" }}>
-                  {template.description}
-                </div>
+                {(template.defaults?.description ?? (template.defaults as { transaction?: { description?: string } })?.transaction?.description) && (
+                  <div style={{ fontSize: "0.9rem", color: "#666" }}>
+                    {template.defaults?.description ?? (template.defaults as { transaction?: { description?: string } })?.transaction?.description}
+                  </div>
+                )}
               </div>
             </label>
           ))}
