@@ -81,10 +81,16 @@ export const en = {
     quick_delivery: {
       title: "Delivery / Used Goods",
       description: "Payment is released after delivery confirmation.",
+      block_payment: "Payment",
+      block_receive: "Receive confirmation",
     },
     moving_service: {
       title: "Moving Service",
       description: "Final payment is released after move completion confirmation.",
+      block_deposit: "Deposit",
+      block_start: "Move start",
+      block_complete: "Move complete",
+      block_final: "Final payment",
     },
     unknown: {
       title: "Template",

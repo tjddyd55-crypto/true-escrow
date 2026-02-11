@@ -81,10 +81,16 @@ export const ko = {
     quick_delivery: {
       title: "택배 / 중고 거래",
       description: "배송 완료 확인 후 대금이 지급됩니다.",
+      block_payment: "결제",
+      block_receive: "수령 확인",
     },
     moving_service: {
       title: "이사 거래",
       description: "이사 완료 확인 후 잔금이 지급됩니다.",
+      block_deposit: "계약금",
+      block_start: "이사 시작",
+      block_complete: "이사 완료",
+      block_final: "잔금 지급",
     },
     unknown: {
       title: "템플릿",

@@ -23,7 +23,7 @@ import { useAutoSave, useAutoSaveByKey, SaveStatusIndicator } from "@/lib/hooks/
 export default function TransactionBuilderPage() {
   const params = useParams();
   const transactionId = params.id as string;
-  const { t, lang, setLang } = useI18n();
+  const { t, tKey, lang, setLang } = useI18n();
   const [graph, setGraph] = useState<TransactionGraph | null>(null);
   const [logs, setLogs] = useState<ActivityLog[]>([]);
   const [loading, setLoading] = useState(true);
@@ -595,16 +595,16 @@ export default function TransactionBuilderPage() {
                             />
                             <input
                               type="text"
-                              value={localBlockTitles[block.id] ?? block.title}
+                              value={localBlockTitles[block.id] ?? tKey(block.title)}
                               onChange={(e) => setLocalBlockTitles((prev) => ({ ...prev, [block.id]: e.target.value }))}
                               onBlur={() => {
-                                const title = (localBlockTitles[block.id] ?? block.title).trim();
+                                const title = (localBlockTitles[block.id] ?? tKey(block.title)).trim();
                                 setLocalBlockTitles((prev) => {
                                   const next = { ...prev };
                                   delete next[block.id];
                                   return next;
                                 });
-                                if (title === (block.title ?? "").trim()) return;
+                                if (title === tKey(block.title).trim()) return;
                                 triggerSaveBlock(block.id, async () => {
                                   await updateBlock(block.id, { title });
                                 });
@@ -626,7 +626,7 @@ export default function TransactionBuilderPage() {
                               }}
                             />
                             <span style={{ fontSize: "1rem", color: "#666" }}>🔒</span>
-                            <h3 style={{ margin: 0 }}>{block.title}</h3>
+                            <h3 style={{ margin: 0 }}>{tKey(block.title)}</h3>
                           </div>
                         )}
                         <div style={{ display: "flex", gap: 15, alignItems: "center", marginBottom: 10, flexWrap: "wrap" }}>
