@@ -9,6 +9,17 @@ export type EscrowTemplateRow = {
 
 export async function GET() {
   try {
+    // [DEBUG] 운영 서버 DB 연결 확인용 – 확인 후 제거
+    console.log("[DEBUG] DATABASE_URL:", process.env.DATABASE_URL ? "[set]" : "[not set]");
+
+    const debugResult = await query<{ db: string; schema: string; template_count: string }>(`
+      SELECT current_database() AS db,
+             current_schema() AS schema,
+             count(*)::text AS template_count
+      FROM escrow_templates
+    `);
+    console.log("[DEBUG] DB DEBUG:", debugResult.rows);
+
     const result = await query<EscrowTemplateRow>(`
       SELECT template_key, label, defaults
       FROM escrow_templates
