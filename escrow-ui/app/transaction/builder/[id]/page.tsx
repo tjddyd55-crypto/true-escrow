@@ -21,6 +21,20 @@ import { daysBetween } from "@/lib/transaction-engine/dateUtils";
 import { TransactionCalendar, BLOCK_COLORS } from "@/components/TransactionCalendar";
 import { useAutoSave, useAutoSaveByKey, SaveStatusIndicator } from "@/lib/hooks/useAutoSave";
 
+export type BlockQuestion = {
+  id: string;
+  block_id: string;
+  order_index: number;
+  type: string;
+  label: string | null;
+  description: string | null;
+  required: boolean;
+  options?: unknown;
+  created_at?: string;
+};
+
+const QUESTION_TYPES = ["SHORT_TEXT", "LONG_TEXT", "CHECKBOX", "DROPDOWN", "DATE", "FILE", "NUMBER"] as const;
+
 export default function TransactionBuilderPage() {
   const params = useParams();
   const transactionId = params.id as string;
@@ -34,6 +48,7 @@ export default function TransactionBuilderPage() {
   const [localWorkRuleTitles, setLocalWorkRuleTitles] = useState<Record<string, string>>({});
   const [localTxTitle, setLocalTxTitle] = useState<string | undefined>(undefined);
   const [localTxDesc, setLocalTxDesc] = useState<string | undefined>(undefined);
+  const [blockQuestionsByBlockId, setBlockQuestionsByBlockId] = useState<Record<string, BlockQuestion[]>>({});
   const { status: saveStatusTxTitle, triggerSave: triggerSaveTxTitle } = useAutoSave();
   const { status: saveStatusTxDesc, triggerSave: triggerSaveTxDesc } = useAutoSave();
   const { getStatus: getBlockSaveStatus, triggerSave: triggerSaveBlock } = useAutoSaveByKey();
@@ -50,6 +65,20 @@ export default function TransactionBuilderPage() {
       fetchData();
     }
   }, [transactionId]);
+
+  async function fetchBlockQuestions(blockId: string) {
+    const res = await fetch(`/api/engine/blocks/${blockId}/questions`, { cache: "no-store" });
+    if (!res.ok) return;
+    const json = await res.json();
+    if (json.ok && Array.isArray(json.data)) {
+      setBlockQuestionsByBlockId((prev) => ({ ...prev, [blockId]: json.data }));
+    }
+  }
+
+  useEffect(() => {
+    if (!graph?.blocks?.length) return;
+    graph.blocks.forEach((b) => fetchBlockQuestions(b.id));
+  }, [graph?.blocks?.map((b) => b.id).join(",")]);
 
   async function fetchData() {
     try {
@@ -244,6 +273,61 @@ export default function TransactionBuilderPage() {
       }
     } catch (error) {
       console.error("Failed to delete work rule:", error);
+    }
+  }
+
+  async function addQuestion(blockId: string) {
+    if (!graph || graph.transaction.status !== "DRAFT") return;
+    try {
+      const res = await fetch(`/api/engine/blocks/${blockId}/questions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "SHORT_TEXT", label: "", required: false }),
+      });
+      if (res.ok) {
+        const json = await res.json();
+        if (json.ok && json.data) await fetchBlockQuestions(blockId);
+      }
+    } catch (e) {
+      console.error("Failed to add question:", e);
+    }
+  }
+
+  async function updateQuestion(questionId: string, patch: Partial<BlockQuestion>) {
+    try {
+      const res = await fetch(`/api/engine/questions/${questionId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(patch),
+      });
+      if (res.ok) {
+        const json = await res.json();
+        if (json.ok && json.data?.block_id) await fetchBlockQuestions(json.data.block_id);
+      }
+    } catch (e) {
+      console.error("Failed to update question:", e);
+    }
+  }
+
+  async function deleteQuestion(questionId: string, blockId: string) {
+    try {
+      const res = await fetch(`/api/engine/questions/${questionId}`, { method: "DELETE" });
+      if (res.ok) await fetchBlockQuestions(blockId);
+    } catch (e) {
+      console.error("Failed to delete question:", e);
+    }
+  }
+
+  async function reorderQuestions(blockId: string, orderedQuestionIds: string[]) {
+    try {
+      const res = await fetch("/api/engine/questions/reorder", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ blockId, orderedQuestionIds }),
+      });
+      if (res.ok) await fetchBlockQuestions(blockId);
+    } catch (e) {
+      console.error("Failed to reorder questions:", e);
     }
   }
 
@@ -876,6 +960,113 @@ export default function TransactionBuilderPage() {
                       )}
                     </div>
 
+                    {/* Block Questions (Google Forms style) */}
+                    <div style={{ marginBottom: 15, padding: 10, backgroundColor: "#f0fdf4", borderRadius: 4 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                        <h4 style={{ margin: 0, fontSize: "1rem" }}>{t.blockQuestions}</h4>
+                        {isDraft && (
+                          <button
+                            type="button"
+                            onClick={() => addQuestion(block.id)}
+                            style={{
+                              padding: "4px 8px",
+                              backgroundColor: "#16a34a",
+                              color: "white",
+                              border: "none",
+                              borderRadius: 4,
+                              cursor: "pointer",
+                              fontSize: "0.85rem",
+                            }}
+                          >
+                            {t.addQuestion}
+                          </button>
+                        )}
+                      </div>
+                      {(blockQuestionsByBlockId[block.id] ?? []).map((q) => (
+                        <div key={q.id} style={{ padding: 10, marginBottom: 8, border: "1px solid #e0e0e0", borderRadius: 4, backgroundColor: "white" }}>
+                          {isDraft ? (
+                            <>
+                              <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 6, flexWrap: "wrap" }}>
+                                <select
+                                  value={q.type}
+                                  onChange={(e) => updateQuestion(q.id, { type: e.target.value })}
+                                  style={{ padding: 4, border: "1px solid #e0e0e0", borderRadius: 4, fontSize: "0.85rem" }}
+                                >
+                                  {QUESTION_TYPES.map((qt) => (
+                                    <option key={qt} value={qt}>{qt}</option>
+                                  ))}
+                                </select>
+                                <label style={{ fontSize: "0.85rem", display: "flex", alignItems: "center", gap: 4 }}>
+                                  <input
+                                    type="checkbox"
+                                    checked={q.required}
+                                    onChange={(e) => updateQuestion(q.id, { required: e.target.checked })}
+                                  />
+                                  {t.required}
+                                </label>
+                              </div>
+                              <input
+                                type="text"
+                                value={q.label ?? ""}
+                                onChange={(e) => updateQuestion(q.id, { label: e.target.value })}
+                                onBlur={() => fetchBlockQuestions(block.id)}
+                                placeholder={t.questionLabel}
+                                style={{ width: "100%", padding: 6, marginBottom: 4, border: "1px solid #e0e0e0", borderRadius: 4 }}
+                              />
+                              <input
+                                type="text"
+                                value={q.description ?? ""}
+                                onChange={(e) => updateQuestion(q.id, { description: e.target.value })}
+                                onBlur={() => fetchBlockQuestions(block.id)}
+                                placeholder={t.questionDescription}
+                                style={{ width: "100%", padding: 6, marginBottom: 4, border: "1px solid #e0e0e0", borderRadius: 4, fontSize: "0.9rem" }}
+                              />
+                              {(q.type === "CHECKBOX" || q.type === "DROPDOWN") && (
+                                <div style={{ marginTop: 6 }}>
+                                  <span style={{ fontSize: "0.85rem", color: "#666" }}>{t.options}: </span>
+                                  <input
+                                    type="text"
+                                    value={Array.isArray(q.options) ? (q.options as string[]).join(", ") : ""}
+                                    onChange={(e) => {
+                                      const opts = e.target.value.split(",").map((s) => s.trim()).filter(Boolean);
+                                      updateQuestion(q.id, { options: opts });
+                                    }}
+                                    onBlur={() => fetchBlockQuestions(block.id)}
+                                    placeholder="Option A, Option B"
+                                    style={{ width: "100%", padding: 4, border: "1px solid #e0e0e0", borderRadius: 4 }}
+                                  />
+                                </div>
+                              )}
+                              {q.type === "DATE" && (
+                                <p style={{ margin: "4px 0 0", fontSize: "0.8rem", color: "#666" }}>{t.datePickerNote}</p>
+                              )}
+                              {q.type === "FILE" && (
+                                <p style={{ margin: "4px 0 0", fontSize: "0.8rem", color: "#666" }}>{t.fileUploadPlaceholder}</p>
+                              )}
+                              <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                                <button type="button" onClick={() => deleteQuestion(q.id, block.id)} style={{ padding: "2px 6px", backgroundColor: "#e74c3c", color: "white", border: "none", borderRadius: 4, cursor: "pointer", fontSize: "0.8rem" }}>{t.delete}</button>
+                                {(blockQuestionsByBlockId[block.id] ?? []).indexOf(q) > 0 && (
+                                  <button type="button" onClick={() => { const list = blockQuestionsByBlockId[block.id] ?? []; const idx = list.findIndex((x) => x.id === q.id); if (idx <= 0) return; const next = [...list]; [next[idx - 1], next[idx]] = [next[idx], next[idx - 1]]; reorderQuestions(block.id, next.map((x) => x.id)); }} style={{ padding: "2px 6px", fontSize: "0.8rem" }}>↑</button>
+                                )}
+                                {(blockQuestionsByBlockId[block.id] ?? []).indexOf(q) < (blockQuestionsByBlockId[block.id]?.length ?? 0) - 1 && (
+                                  <button type="button" onClick={() => { const list = blockQuestionsByBlockId[block.id] ?? []; const idx = list.findIndex((x) => x.id === q.id); if (idx < 0 || idx >= list.length - 1) return; const next = [...list]; [next[idx], next[idx + 1]] = [next[idx + 1], next[idx]]; reorderQuestions(block.id, next.map((x) => x.id)); }} style={{ padding: "2px 6px", fontSize: "0.8rem" }}>↓</button>
+                                )}
+                              </div>
+                            </>
+                          ) : (
+                            <div>
+                              <div style={{ fontWeight: "600" }}>{q.label || q.type}</div>
+                              {q.description && <div style={{ fontSize: "0.85rem", color: "#666" }}>{q.description}</div>}
+                              <span style={{ fontSize: "0.75rem", color: "#999" }}>{q.type}{q.required ? " · " + t.required : ""}</span>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                      {(blockQuestionsByBlockId[block.id] ?? []).length === 0 && (
+                        <p style={{ fontSize: "0.85rem", color: "#666", fontStyle: "italic", margin: 0 }}>{t.noQuestionsYet}</p>
+                      )}
+                    </div>
+
                     {/* Work Rules */}
                     <div style={{ marginBottom: 15 }}>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
@@ -969,17 +1160,7 @@ export default function TransactionBuilderPage() {
                                   <option value="CUSTOM">{t.custom}</option>
                                 </select>
                               </div>
-                              <input
-                                type="text"
-                                value={rule.dueDates.join(", ")}
-                                onChange={(e) => {
-                                  const dates = e.target.value.split(",").map((d) => parseInt(d.trim())).filter((n) => !isNaN(n));
-                                  updateWorkRule(rule.id, { dueDates: dates });
-                                }}
-                                onBlur={() => fetchData()}
-                                placeholder={t.dueDates}
-                                style={{ width: "100%", padding: 4, border: "1px solid #e0e0e0", borderRadius: 4 }}
-                              />
+                              <p style={{ margin: "4px 0 0", fontSize: "0.8rem", color: "#666" }}>{t.dueDatesDerivedFromBlock}</p>
                               <button
                                 onClick={() => deleteWorkRule(rule.id)}
                                 type="button"

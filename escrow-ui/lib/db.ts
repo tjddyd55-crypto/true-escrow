@@ -27,3 +27,22 @@ export async function query<T = Record<string, unknown>>(
     client.release();
   }
 }
+
+/** Run multiple queries in a single transaction. Rolls back on throw. */
+export async function withTransaction<T>(
+  fn: (client: import("pg").PoolClient) => Promise<T>
+): Promise<T> {
+  if (!pool) throw new Error("Database pool not configured");
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const result = await fn(client);
+    await client.query("COMMIT");
+    return result;
+  } catch (e) {
+    await client.query("ROLLBACK").catch(() => {});
+    throw e;
+  } finally {
+    client.release();
+  }
+}

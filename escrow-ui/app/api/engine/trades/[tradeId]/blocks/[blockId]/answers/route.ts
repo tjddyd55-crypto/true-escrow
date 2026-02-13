@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { query } from "@/lib/db";
 import { validateAnswerByType } from "@/lib/block-questions/validateAnswer";
+import * as store from "@/lib/transaction-engine/store";
 
 type QuestionRow = { id: string; type: string; required: boolean; options: unknown };
 
@@ -16,6 +17,19 @@ export async function POST(
         { status: 400 }
       );
     }
+
+    const transaction = store.getTransaction(tradeId);
+    if (!transaction) {
+      return NextResponse.json({ ok: false, error: "Trade not found" }, { status: 404 });
+    }
+    const blocks = store.getBlocks(tradeId);
+    if (!blocks.some((b) => b.id === blockId)) {
+      return NextResponse.json(
+        { ok: false, error: "Block does not belong to this trade" },
+        { status: 400 }
+      );
+    }
+
     const body = (await request.json()) as {
       actorRole?: string;
       answers?: Array<{ questionId: string; answer: unknown }>;

@@ -35,6 +35,17 @@ export const ko = {
   enterRole: "역할을 입력하세요 (BUYER/SELLER/VERIFIER):",
   enterDisplayName: "표시 이름을 입력하세요:",
   
+  // Block Questions
+  blockQuestions: "블록 질문",
+  addQuestion: "+ 질문 추가",
+  questionType: "질문 유형",
+  questionLabel: "질문 라벨",
+  questionDescription: "설명 (선택)",
+  options: "선택지",
+  datePickerNote: "응답 시 날짜 선택기로 입력됩니다.",
+  fileUploadPlaceholder: "파일 업로드 (메타데이터 먼저 저장)",
+  noQuestionsYet: "아직 질문이 없습니다.",
+
   // Work Rules
   workRules: "작업 규칙",
   addRule: "+ 작업 규칙 추가",
@@ -43,6 +54,7 @@ export const ko = {
   quantity: "수량",
   frequency: "빈도",
   dueDates: "마감일",
+  dueDatesDerivedFromBlock: "마감일은 블록 기간에서 파생됩니다.",
   once: "한 번",
   daily: "매일",
   weekly: "매주",

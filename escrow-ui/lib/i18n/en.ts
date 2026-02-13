@@ -35,6 +35,17 @@ export const en = {
   enterRole: "Enter role (BUYER/SELLER/VERIFIER):",
   enterDisplayName: "Enter display name:",
   
+  // Block Questions
+  blockQuestions: "Block Questions",
+  addQuestion: "+ Add Question",
+  questionType: "Question type",
+  questionLabel: "Question label",
+  questionDescription: "Description (optional)",
+  options: "Options",
+  datePickerNote: "Answer will use date picker when filling.",
+  fileUploadPlaceholder: "File upload (metadata-first).",
+  noQuestionsYet: "No questions yet.",
+
   // Work Rules
   workRules: "Work Rules",
   addRule: "+ Add Rule",
@@ -43,6 +54,7 @@ export const en = {
   quantity: "Quantity",
   frequency: "Frequency",
   dueDates: "Due Dates",
+  dueDatesDerivedFromBlock: "Due dates are derived from block period.",
   once: "ONCE",
   daily: "DAILY",
   weekly: "WEEKLY",
