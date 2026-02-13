@@ -2,6 +2,9 @@
  * TransactionGraph → ExecutionPlanDoc (pure, read-only).
  * Preview와 PDF가 동일한 DocumentModel 사용.
  * 빈 거래/날짜 없음 방어, 승인/조건/지급 표시 규칙 고정.
+ *
+ * ⚠️ 이 모듈은 반드시 read-only: store.save / store.update / graph 배열 push·concat 금지.
+ * 블록 정렬은 orderIndex(sequence) 기준만 사용, ID 순서에 의존하지 않음.
  */
 
 import type { TransactionGraph } from "@/lib/transaction-engine/types";

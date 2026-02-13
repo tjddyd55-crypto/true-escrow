@@ -41,7 +41,10 @@ function payoutLabel(lang: DocLang, code: string): string {
     return translate(lang, "executionPlan.payoutRatio").replace("{pct}", pct);
   }
   if (code.startsWith("FIXED:")) {
-    const amount = code.slice(6).trim();
+    const raw = code.slice(6).trim();
+    const num = Number(raw);
+    const amount =
+      Number.isNaN(num) ? raw : num.toLocaleString(lang === "ko" ? "ko-KR" : "en-US");
     return translate(lang, "executionPlan.payoutFixed").replace("{amount}", amount);
   }
   return code;
@@ -69,6 +72,9 @@ export function renderExecutionPlanToPdf(
       pdf.registerFont("NotoSansKR", FONT_PATH_KR);
       pdf.font("NotoSansKR");
     } else {
+      if (typeof console !== "undefined" && console.warn) {
+        console.warn("[execution-plan.pdf] NotoSansKR font not found at", FONT_PATH_KR, "- using Helvetica; Korean may render as boxes.");
+      }
       pdf.font("Helvetica");
     }
 

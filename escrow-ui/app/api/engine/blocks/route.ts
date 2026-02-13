@@ -11,7 +11,11 @@ export async function POST(request: NextRequest) {
     }
 
     const existingBlocks = store.getBlocks(transactionId);
-    const orderIndex = body.orderIndex ?? existingBlocks.length + 1;
+    const maxOrder =
+      existingBlocks.length > 0
+        ? Math.max(...existingBlocks.map((b) => b.orderIndex))
+        : 0;
+    const orderIndex = body.orderIndex ?? maxOrder + 1;
 
     let block;
     if (body.startDate !== undefined && body.endDate !== undefined) {
