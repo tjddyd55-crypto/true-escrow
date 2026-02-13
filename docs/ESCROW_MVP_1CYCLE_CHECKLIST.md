@@ -60,4 +60,19 @@
 
 ---
 
-*마지막 갱신: 1사이클 안정화 마감 지시문 반영*
+## 7. Block Questions
+
+- [ ] **Questions CRUD**  
+  GET/POST `/api/engine/blocks/[blockId]/questions`, PATCH/DELETE `/api/engine/questions/[questionId]`, POST `/api/engine/questions/reorder` return `{ ok, data }` / `{ ok, error }`.
+- [ ] **Answers API**  
+  POST `/api/engine/trades/[tradeId]/blocks/[blockId]/answers` validates required questions and type-specific rules.
+- [ ] **Attachments API**  
+  POST `/api/engine/trades/[tradeId]/blocks/[blockId]/attachments` creates metadata row (no S3); future-proof fields present.
+- [ ] **Builder**  
+  Add Question, type/label/required/options, stable keys (`question.id`), reorder (up/down or drag).
+- [ ] **Block reorder**  
+  Up/down or drag persists via reorder endpoint; date policy enforced; no unintended append of blocks/orderIndex.
+
+---
+
+*마지막 갱신: Block Questions instruction set + checklist*
