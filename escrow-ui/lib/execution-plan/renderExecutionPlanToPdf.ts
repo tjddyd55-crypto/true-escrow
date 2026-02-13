@@ -7,8 +7,12 @@ import path from "path";
 import fs from "fs";
 import type { ExecutionPlanDoc } from "./types";
 import { translate, type DocLang } from "./i18nServer";
-// @ts-expect-error pdfkit has no default export in types
-import PDFDocument from "pdfkit";
+
+// Server-only: require at runtime so Turbopack doesn't resolve pdfkit at build time
+let PDFDocument: any;
+if (typeof window === "undefined") {
+  PDFDocument = require("pdfkit");
+}
 
 const FONT_PATH_KR = path.join(process.cwd(), "assets", "fonts", "NotoSansKR-Regular.ttf");
 
