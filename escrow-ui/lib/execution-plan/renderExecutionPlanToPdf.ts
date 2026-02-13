@@ -8,10 +8,10 @@ import fs from "fs";
 import type { ExecutionPlanDoc } from "./types";
 import { translate, type DocLang } from "./i18nServer";
 
-// Server-only: require at runtime so Turbopack doesn't resolve pdfkit at build time
+// Server-only: dynamic module id so Turbopack skips static resolve (runtime require in Node)
 let PDFDocument: any;
 if (typeof window === "undefined") {
-  PDFDocument = require("pdfkit");
+  PDFDocument = require("pdf" + "kit");
 }
 
 const FONT_PATH_KR = path.join(process.cwd(), "assets", "fonts", "NotoSansKR-Regular.ttf");
