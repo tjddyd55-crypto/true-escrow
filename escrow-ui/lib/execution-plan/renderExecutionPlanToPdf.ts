@@ -5,13 +5,16 @@
 
 import path from "path";
 import fs from "fs";
+import { createRequire } from "module";
 import type { ExecutionPlanDoc } from "./types";
 import { translate, type DocLang } from "./i18nServer";
 
-// Server-only: dynamic module id so Turbopack skips static resolve (runtime require in Node)
-let PDFDocument: any;
-if (typeof window === "undefined") {
-  PDFDocument = require("pdf" + "kit");
+const nodeRequire = createRequire(import.meta.url);
+
+function loadPdfDocumentCtor(): any {
+  // Keep module id dynamic so Turbopack does not attempt static resolution at build time.
+  const moduleId = "pdf" + "kit";
+  return nodeRequire(moduleId);
 }
 
 const FONT_PATH_KR = path.join(process.cwd(), "assets", "fonts", "NotoSansKR-Regular.ttf");
@@ -63,6 +66,7 @@ export function renderExecutionPlanToPdf(
   options: RenderPdfOptions = {}
 ): Promise<Buffer> {
   const lang = options.lang ?? "ko";
+  const PDFDocument = loadPdfDocumentCtor();
 
   return new Promise((resolve, reject) => {
     const pdf = new PDFDocument({ size: "A4", margin: 50 });
