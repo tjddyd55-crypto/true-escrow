@@ -5,6 +5,9 @@ const nextConfig: NextConfig = {
   images: {
     unoptimized: true,
   },
+  outputFileTracingIncludes: {
+    "/api/engine/transactions/[id]/execution-plan.pdf": ["./assets/fonts/*.ttf"],
+  },
 };
 
 export default nextConfig;

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
+import Link from "next/link";
 import { useI18n } from "@/lib/i18n/provider";
 import type {
   TransactionGraph,
@@ -500,6 +501,21 @@ export default function TransactionBuilderPage() {
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 15 }}>
           <span style={{ color: "#666" }}>{t.overallDuration}: {overallDuration}</span>
           <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+            <Link
+              href={`/transaction/preview/${transactionId}`}
+              style={{
+                padding: "8px 16px",
+                backgroundColor: "#6366f1",
+                color: "white",
+                border: "none",
+                borderRadius: 4,
+                cursor: "pointer",
+                fontWeight: "600",
+                textDecoration: "none",
+              }}
+            >
+              {t.executionPlan?.preview ?? "Preview"}
+            </Link>
             <span
               style={{
                 padding: "4px 12px",

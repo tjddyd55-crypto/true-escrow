@@ -76,6 +76,34 @@ export const en = {
   transactionNotFound: "Transaction not found",
   error: "Error",
 
+  // Execution Plan (Preview / PDF)
+  executionPlan: {
+    title: "Execution Plan",
+    start: "Transaction start",
+    end: "Transaction end",
+    downloadPdf: "Download PDF",
+    preview: "Preview",
+    daysElapsed: "({n} days elapsed)",
+    durationDays: "({n} days)",
+    approvals: "Approvals",
+    conditions: "Conditions",
+    payoutRule: "Payout",
+    blockCount: "Blocks",
+    totalDays: "Total days",
+    parties: "Parties",
+    dateUnset: "Date not set",
+    conditionFallback: "Condition",
+    approvalBuyer: "Buyer approval",
+    approvalSeller: "Seller approval",
+    approvalAdmin: "Admin approval",
+    approvalVerifier: "Verifier approval",
+    payoutFull: "Full payment",
+    payoutRatio: "{pct}% payment",
+    payoutFixed: "{amount} fixed payment",
+    payoutNone: "No payment",
+    payoutUnset: "—",
+  },
+
   // Template labels (i18n key based)
   template: {
     quick_delivery: {

@@ -76,6 +76,34 @@ export const ko = {
   transactionNotFound: "거래를 찾을 수 없습니다",
   error: "오류",
 
+  // Execution Plan (미리보기 / PDF)
+  executionPlan: {
+    title: "거래 실행 명세서",
+    start: "거래 시작",
+    end: "거래 종료",
+    downloadPdf: "PDF 다운로드",
+    preview: "미리보기",
+    daysElapsed: "({n}일 경과)",
+    durationDays: "({n}일)",
+    approvals: "승인자",
+    conditions: "조건",
+    payoutRule: "지급 규칙",
+    blockCount: "블록 수",
+    totalDays: "총 일수",
+    parties: "당사자",
+    dateUnset: "날짜 미설정",
+    conditionFallback: "조건",
+    approvalBuyer: "구매자 승인",
+    approvalSeller: "판매자 승인",
+    approvalAdmin: "관리자 승인",
+    approvalVerifier: "검수자 승인",
+    payoutFull: "전액 지급",
+    payoutRatio: "{pct}% 지급",
+    payoutFixed: "{amount} 고정 지급",
+    payoutNone: "지급 없음",
+    payoutUnset: "—",
+  },
+
   // Template labels (i18n key 기반)
   template: {
     quick_delivery: {
