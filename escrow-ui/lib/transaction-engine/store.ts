@@ -205,6 +205,142 @@ export function getSuggestedBlockDates(transactionId: string): { startDate: stri
   return { startDate, endDate: tx.endDate };
 }
 
+/** Last day of first half when splitting a block (inclusive). First half has floor(duration/2) days. */
+function midDateForSplit(startDate: string, endDate: string): string {
+  const duration = daysBetween(startDate, endDate);
+  if (duration <= 1) return startDate;
+  return addDays(startDate, Math.floor(duration / 2) - 1);
+}
+
+/**
+ * Add a block: use suggested gap if any; otherwise split the longest block to make room (auto-split).
+ * Ensures "add block" always succeeds when transaction has at least one block with duration >= 2.
+ */
+export function addBlockWithAutoSplit(
+  transactionId: string,
+  options: {
+    title?: string;
+    orderIndex?: number;
+    approvalType?: ApprovalPolicyType;
+    threshold?: number;
+  } = {}
+): Block {
+  if (!isDraft(transactionId)) {
+    throw new Error("Blocks can only be added in DRAFT status");
+  }
+
+  const tx = findTransaction(transactionId);
+  if (!tx?.startDate || !tx?.endDate) {
+    throw new Error("Transaction must have startDate and endDate before adding blocks");
+  }
+
+  const existing = blocks.filter((b) => b.transactionId === transactionId).sort((a, b) => a.orderIndex - b.orderIndex);
+
+  const suggested = getSuggestedBlockDates(transactionId);
+  if (suggested) {
+    const policy = createApprovalPolicy({
+      type: options.approvalType ?? "SINGLE",
+      threshold: options.threshold,
+    });
+    const orderIndex = options.orderIndex ?? existing.length + 1;
+    return addBlock(transactionId, {
+      title: options.title ?? `Block ${orderIndex}`,
+      startDate: suggested.startDate,
+      endDate: suggested.endDate,
+      orderIndex,
+      approvalPolicyId: policy.id,
+    });
+  }
+
+  if (existing.length === 0) {
+    const policy = createApprovalPolicy({
+      type: options.approvalType ?? "SINGLE",
+      threshold: options.threshold,
+    });
+    return addBlock(transactionId, {
+      title: options.title ?? "Block 1",
+      startDate: tx.startDate,
+      endDate: tx.endDate,
+      orderIndex: 1,
+      approvalPolicyId: policy.id,
+    });
+  }
+
+  const longest = [...existing].sort(
+    (a, b) => daysBetween(b.startDate, b.endDate) - daysBetween(a.startDate, a.endDate)
+  )[0];
+  const duration = daysBetween(longest.startDate, longest.endDate);
+  if (duration <= 1) {
+    throw new Error("Cannot split block further");
+  }
+
+  const mid = midDateForSplit(longest.startDate, longest.endDate);
+  const originalEnd = longest.endDate;
+  const newBlockStart = addDays(mid, 1);
+
+  const newPolicy: ApprovalPolicy = {
+    id: generateId(),
+    type: options.approvalType ?? "SINGLE",
+    threshold: options.threshold,
+  };
+  const newBlock: Block = {
+    id: generateId(),
+    transactionId,
+    title: options.title ?? `Block ${existing.length + 1}`,
+    startDate: newBlockStart,
+    endDate: originalEnd,
+    orderIndex: longest.orderIndex + 1,
+    approvalPolicyId: newPolicy.id,
+    isActive: false,
+  };
+  const newApprover: BlockApprover = {
+    id: generateId(),
+    blockId: newBlock.id,
+    role: "BUYER",
+    required: true,
+  };
+  const totalDays = daysBetween(tx.startDate, tx.endDate);
+  const dueDay = Math.min(daysBetween(tx.startDate, newBlock.endDate), totalDays);
+  const newWorkRule: WorkRule = {
+    id: generateId(),
+    blockId: newBlock.id,
+    workType: "CUSTOM",
+    title: newBlock.title,
+    quantity: 1,
+    frequency: "ONCE",
+    dueDates: [dueDay],
+  };
+
+  const updatedBlocks: Block[] = existing.map((b) => {
+    if (b.id === longest.id) {
+      return { ...b, endDate: mid };
+    }
+    if (b.orderIndex > longest.orderIndex) {
+      return { ...b, orderIndex: b.orderIndex + 1 };
+    }
+    return { ...b };
+  });
+  updatedBlocks.push(newBlock);
+  updatedBlocks.sort((a, b) => a.orderIndex - b.orderIndex);
+
+  const approvalPoliciesForTx = existing.map((b) => getApprovalPolicy(b.approvalPolicyId)).filter(Boolean) as ApprovalPolicy[];
+  const blockApproversForTx = existing.flatMap((b) => getBlockApprovers(b.id));
+  const workRulesForTx = existing.flatMap((b) => getWorkRules(b.id));
+  const workItemsForTx = existing.flatMap((b) => getWorkItemsByBlock(b.id));
+
+  const graph: TransactionGraph = {
+    transaction: { ...tx },
+    blocks: updatedBlocks,
+    approvalPolicies: [...approvalPoliciesForTx, newPolicy],
+    blockApprovers: [...blockApproversForTx, newApprover],
+    workRules: [...workRulesForTx, newWorkRule],
+    workItems: workItemsForTx,
+  };
+  saveTransactionGraph(graph);
+  appendLog(transactionId, "ADMIN", "BLOCK_ADDED", { blockId: newBlock.id });
+  return newBlock;
+}
+
 export function listTransactions(): Transaction[] {
   return [...transactions];
 }

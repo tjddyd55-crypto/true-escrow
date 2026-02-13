@@ -10,36 +10,30 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: false, error: "transactionId required" }, { status: 400 });
     }
 
-    // Suggested default: startDate = previousBlock.endDate + 1, endDate = transaction.endDate (suggestions only)
-    let startDate = body.startDate;
-    let endDate = body.endDate;
-    if (startDate === undefined || endDate === undefined) {
-      const suggested = store.getSuggestedBlockDates(transactionId);
-      if (!suggested) {
-        return NextResponse.json(
-          { ok: false, error: "No room for another block within transaction date range" },
-          { status: 400 }
-        );
-      }
-      startDate = startDate ?? suggested.startDate;
-      endDate = endDate ?? suggested.endDate;
-    }
-
-    const policy = store.createApprovalPolicy({
-      type: body.approvalType || "SINGLE",
-      threshold: body.threshold,
-    });
-
     const existingBlocks = store.getBlocks(transactionId);
     const orderIndex = body.orderIndex ?? existingBlocks.length + 1;
 
-    const block = store.addBlock(transactionId, {
-      title: body.title ?? `Block ${orderIndex}`,
-      startDate,
-      endDate,
-      orderIndex,
-      approvalPolicyId: policy.id,
-    });
+    let block;
+    if (body.startDate !== undefined && body.endDate !== undefined) {
+      const policy = store.createApprovalPolicy({
+        type: body.approvalType || "SINGLE",
+        threshold: body.threshold,
+      });
+      block = store.addBlock(transactionId, {
+        title: body.title ?? `Block ${orderIndex}`,
+        startDate: body.startDate,
+        endDate: body.endDate,
+        orderIndex,
+        approvalPolicyId: policy.id,
+      });
+    } else {
+      block = store.addBlockWithAutoSplit(transactionId, {
+        title: body.title ?? `Block ${orderIndex}`,
+        orderIndex,
+        approvalType: body.approvalType || "SINGLE",
+        threshold: body.threshold,
+      });
+    }
 
     return NextResponse.json({ ok: true, data: block });
   } catch (error: any) {
