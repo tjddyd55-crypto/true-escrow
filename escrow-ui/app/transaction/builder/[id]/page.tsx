@@ -282,7 +282,7 @@ export default function TransactionBuilderPage() {
       const res = await fetch(`/api/engine/blocks/${blockId}/questions`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type: "SHORT_TEXT", label: "", required: false }),
+        body: JSON.stringify({ type: "SHORT_TEXT", label: t.questionLabel || "New question", required: false }),
       });
       if (res.ok) {
         const json = await res.json();
