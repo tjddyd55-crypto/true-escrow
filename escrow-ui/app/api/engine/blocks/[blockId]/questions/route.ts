@@ -6,7 +6,7 @@ type QuestionRow = {
   block_id: string;
   order_index: number;
   type: string;
-  label: string;
+  label: string | null;
   description: string | null;
   required: boolean;
   options: unknown;
@@ -15,10 +15,10 @@ type QuestionRow = {
 
 export async function GET(
   _request: NextRequest,
-  { params }: { params: Promise<{ blockId: string }> }
+  { params }: { params: { blockId: string } }
 ) {
   try {
-    const { blockId } = await params;
+    const blockId = params.blockId;
 
     if (!blockId) {
       return NextResponse.json(
@@ -38,19 +38,21 @@ export async function GET(
     );
 
     return NextResponse.json({ ok: true, data: rows });
-  } catch (e: unknown) {
-    const message =
-      e instanceof Error ? e.message : "Failed to list questions";
-    return NextResponse.json({ ok: false, error: message }, { status: 500 });
+  } catch (e: any) {
+    console.error("GET questions error:", e);
+    return NextResponse.json(
+      { ok: false, error: e.message || "Failed to list questions" },
+      { status: 500 }
+    );
   }
 }
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: Promise<{ blockId: string }> }
+  { params }: { params: { blockId: string } }
 ) {
   try {
-    const { blockId } = await params;
+    const blockId = params.blockId;
 
     if (!blockId) {
       return NextResponse.json(
@@ -62,23 +64,15 @@ export async function POST(
     const body = await request.json();
 
     const type = body.type ?? "SHORT_TEXT";
-    const label = body.label;
+    const label = body.label ?? null;
     const description = body.description ?? null;
     const required = Boolean(body.required);
     const options = body.options ?? null;
 
-    // 🔥 label is NOT NULL in DB
-    if (!label || typeof label !== "string") {
-      return NextResponse.json(
-        { ok: false, error: "label is required" },
-        { status: 400 }
-      );
-    }
-
-    // Get next order_index
+    // 🔥 order_index는 0부터 시작
     const { rows: maxRows } = await query<{ m: number }>(
       `
-      SELECT COALESCE(MAX(order_index), -1)::int AS m
+      SELECT COALESCE(MAX(order_index), -1) AS m
       FROM escrow_block_questions
       WHERE block_id = $1
       `,
@@ -87,7 +81,6 @@ export async function POST(
 
     const orderIndex = (maxRows[0]?.m ?? -1) + 1;
 
-    // ✅ IMPORTANT: pass options as object (NOT JSON.stringify)
     const { rows: inserted } = await query<QuestionRow>(
       `
       INSERT INTO escrow_block_questions
@@ -102,14 +95,16 @@ export async function POST(
         label,
         description,
         required,
-        options
+        options // 🔥 JSON.stringify 제거
       ]
     );
 
     return NextResponse.json({ ok: true, data: inserted[0] });
-  } catch (e: unknown) {
-    const message =
-      e instanceof Error ? e.message : "Failed to create question";
-    return NextResponse.json({ ok: false, error: message }, { status: 500 });
+  } catch (e: any) {
+    console.error("POST question error:", e);
+    return NextResponse.json(
+      { ok: false, error: e.message || "Failed to create question" },
+      { status: 500 }
+    );
   }
 }
