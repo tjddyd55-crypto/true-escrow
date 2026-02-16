@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { query } from "@/lib/db";
+import { isDatabaseConfigured, query } from "@/lib/db";
+import * as inMemoryQuestionStore from "@/lib/block-questions/inMemoryQuestionStore";
 
 type QuestionRow = {
   id: string;
@@ -23,6 +24,22 @@ export async function PATCH(
       return NextResponse.json({ ok: false, error: "questionId required" }, { status: 400 });
     }
     const body = (await request.json()) as Record<string, unknown>;
+
+    if (!isDatabaseConfigured()) {
+      const existing = inMemoryQuestionStore.getQuestion(questionId);
+      if (!existing) {
+        return NextResponse.json({ ok: false, error: "Question not found" }, { status: 404 });
+      }
+      const updated = inMemoryQuestionStore.updateQuestion(questionId, {
+        type: body.type as string | undefined,
+        label: body.label as string | null | undefined,
+        description: body.description as string | null | undefined,
+        required: body.required !== undefined ? Boolean(body.required) : undefined,
+        options: body.options,
+      });
+      return NextResponse.json({ ok: true, data: updated });
+    }
+
     const updates: string[] = [];
     const values: unknown[] = [];
     let i = 1;
@@ -80,6 +97,15 @@ export async function DELETE(
     if (!questionId) {
       return NextResponse.json({ ok: false, error: "questionId required" }, { status: 400 });
     }
+
+    if (!isDatabaseConfigured()) {
+      const deleted = inMemoryQuestionStore.deleteQuestion(questionId);
+      if (!deleted.deleted) {
+        return NextResponse.json({ ok: false, error: "Question not found" }, { status: 404 });
+      }
+      return NextResponse.json({ ok: true });
+    }
+
     const { rows } = await query(
       "DELETE FROM escrow_block_questions WHERE id = $1 RETURNING id",
       [questionId]

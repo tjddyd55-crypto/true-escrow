@@ -12,14 +12,22 @@ const pool =
 
 export type QueryResult<T = unknown> = { rows: T[] };
 
+export function isDatabaseConfigured(): boolean {
+  return pool != null;
+}
+
+function getRequiredPool(): Pool {
+  if (!pool) {
+    throw new Error("DATABASE_URL is not configured");
+  }
+  return pool;
+}
+
 export async function query<T = Record<string, unknown>>(
   text: string,
   params?: unknown[]
 ): Promise<QueryResult<T>> {
-  if (!pool) {
-    return { rows: [] };
-  }
-  const client = await pool.connect();
+  const client = await getRequiredPool().connect();
   try {
     const result = await client.query(text, params);
     return { rows: (result.rows || []) as T[] };
@@ -32,8 +40,7 @@ export async function query<T = Record<string, unknown>>(
 export async function withTransaction<T>(
   fn: (client: import("pg").PoolClient) => Promise<T>
 ): Promise<T> {
-  if (!pool) throw new Error("Database pool not configured");
-  const client = await pool.connect();
+  const client = await getRequiredPool().connect();
   try {
     await client.query("BEGIN");
     const result = await fn(client);

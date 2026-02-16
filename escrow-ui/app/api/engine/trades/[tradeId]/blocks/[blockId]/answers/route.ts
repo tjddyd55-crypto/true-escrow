@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { query } from "@/lib/db";
+import { isDatabaseConfigured, query } from "@/lib/db";
 import { validateAnswerByType } from "@/lib/block-questions/validateAnswer";
 import * as store from "@/lib/transaction-engine/store";
+import * as inMemoryQuestionStore from "@/lib/block-questions/inMemoryQuestionStore";
 
 type QuestionRow = { id: string; type: string; required: boolean; options: unknown };
 
@@ -43,10 +44,19 @@ export async function POST(
       );
     }
 
-    const { rows: questions } = await query<QuestionRow>(
-      "SELECT id, type, required, options FROM escrow_block_questions WHERE block_id = $1",
-      [blockId]
-    );
+    const questions: QuestionRow[] = isDatabaseConfigured()
+      ? (
+          await query<QuestionRow>(
+            "SELECT id, type, required, options FROM escrow_block_questions WHERE block_id = $1",
+            [blockId]
+          )
+        ).rows
+      : inMemoryQuestionStore.listQuestions(blockId).map((q) => ({
+          id: q.id,
+          type: q.type,
+          required: q.required,
+          options: q.options,
+        }));
     const answerByQ = new Map(answers.map((a) => [a.questionId, a.answer]));
     const optionsByQ = new Map(questions.map((q) => [q.id, (q.options as string[]) ?? []]));
 
@@ -70,13 +80,15 @@ export async function POST(
       const opts = optionsByQ.get(q.id);
       const result = validateAnswerByType(q.type, a.answer, opts);
       if (!result.valid) continue;
-      await query(
-        `INSERT INTO escrow_block_answers (trade_id, block_id, question_id, actor_role, answer)
-         VALUES ($1, $2, $3, $4, $5)
-         ON CONFLICT (trade_id, block_id, question_id, actor_role)
-         DO UPDATE SET answer = EXCLUDED.answer`,
-        [tradeId, blockId, a.questionId, actorRole, JSON.stringify(a.answer)]
-      );
+      if (isDatabaseConfigured()) {
+        await query(
+          `INSERT INTO escrow_block_answers (trade_id, block_id, question_id, actor_role, answer)
+           VALUES ($1, $2, $3, $4, $5)
+           ON CONFLICT (trade_id, block_id, question_id, actor_role)
+           DO UPDATE SET answer = EXCLUDED.answer`,
+          [tradeId, blockId, a.questionId, actorRole, JSON.stringify(a.answer)]
+        );
+      }
       saved++;
     }
 

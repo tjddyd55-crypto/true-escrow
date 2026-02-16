@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { withTransaction } from "@/lib/db";
+import { isDatabaseConfigured, withTransaction } from "@/lib/db";
+import * as inMemoryQuestionStore from "@/lib/block-questions/inMemoryQuestionStore";
 
 export async function POST(request: NextRequest) {
   try {
@@ -18,6 +19,11 @@ export async function POST(request: NextRequest) {
     }
     if (orderedQuestionIds.length === 0) {
       return NextResponse.json({ ok: true, data: { blockId, orderIndexByQuestionId: {} } });
+    }
+
+    if (!isDatabaseConfigured()) {
+      const orderIndexByQuestionId = inMemoryQuestionStore.reorderQuestions(blockId, orderedQuestionIds);
+      return NextResponse.json({ ok: true, data: { blockId, orderIndexByQuestionId } });
     }
 
     await withTransaction(async (client) => {

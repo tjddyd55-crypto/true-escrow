@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { query } from "@/lib/db";
+import { isDatabaseConfigured, query } from "@/lib/db";
+import * as inMemoryQuestionStore from "@/lib/block-questions/inMemoryQuestionStore";
 
 type QuestionRow = {
   id: string;
@@ -27,15 +28,19 @@ export async function GET(
       );
     }
 
-    const { rows } = await query<QuestionRow>(
-      `
-      SELECT id, block_id, order_index, type, label, description, required, options, created_at
-      FROM escrow_block_questions
-      WHERE block_id = $1
-      ORDER BY order_index ASC
-      `,
-      [blockId]
-    );
+    const rows = isDatabaseConfigured()
+      ? (
+          await query<QuestionRow>(
+            `
+            SELECT id, block_id, order_index, type, label, description, required, options, created_at
+            FROM escrow_block_questions
+            WHERE block_id = $1
+            ORDER BY order_index ASC
+            `,
+            [blockId]
+          )
+        ).rows
+      : inMemoryQuestionStore.listQuestions(blockId);
 
     return NextResponse.json({ ok: true, data: rows });
   } catch (e: unknown) {
@@ -71,6 +76,18 @@ export async function POST(
     const required = Boolean(body.required);
     // Keep jsonb payload valid even when client does not send options.
     const options = body.options ?? [];
+
+    if (!isDatabaseConfigured()) {
+      const created = inMemoryQuestionStore.createQuestion({
+        blockId,
+        type,
+        label,
+        description,
+        required,
+        options,
+      });
+      return NextResponse.json({ ok: true, data: created });
+    }
 
     // Retry once on unique conflicts to avoid transient 500 on rapid clicks.
     for (let attempt = 0; attempt < 2; attempt++) {
@@ -111,6 +128,9 @@ export async function POST(
           ]
         );
 
+        if (!inserted[0]) {
+          throw new Error("Question insert returned no rows");
+        }
         return NextResponse.json({ ok: true, data: inserted[0] });
       } catch (e: unknown) {
         const maybePg = e as { code?: string };
