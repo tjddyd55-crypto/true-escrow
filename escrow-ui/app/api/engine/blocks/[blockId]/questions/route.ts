@@ -69,7 +69,8 @@ export async function POST(
         : "New question";
     const description = body.description ?? null;
     const required = Boolean(body.required);
-    const options = body.options ?? null;
+    // Keep jsonb payload valid even when client does not send options.
+    const options = body.options ?? [];
 
     // Retry once on unique conflicts to avoid transient 500 on rapid clicks.
     for (let attempt = 0; attempt < 2; attempt++) {
@@ -83,6 +84,13 @@ export async function POST(
       );
 
       const orderIndex = (maxRows[0]?.m ?? -1) + 1;
+      console.log("Creating question:", {
+        blockId,
+        orderIndex,
+        type,
+        label,
+        required,
+      });
 
       try {
         const { rows: inserted } = await query<QuestionRow>(

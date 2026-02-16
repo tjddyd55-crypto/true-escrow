@@ -287,6 +287,10 @@ export default function TransactionBuilderPage() {
       if (res.ok) {
         const json = await res.json();
         if (json.ok && json.data) await fetchBlockQuestions(blockId);
+      } else {
+        const err = await res.json().catch(() => ({}));
+        console.error("Failed to add question:", err);
+        alert(err.error || "Failed to add question");
       }
     } catch (e) {
       console.error("Failed to add question:", e);
