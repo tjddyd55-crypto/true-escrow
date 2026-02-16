@@ -2,11 +2,9 @@ FROM gradle:7.6-jdk17 AS build
 
 WORKDIR /app
 
-# Copy build files
-COPY build.gradle settings.gradle ./
-
-# Copy source code
-COPY src ./src
+# Copy project files from build context at once
+# (avoids brittle path-specific COPY cache-key failures in some remote builders)
+COPY . .
 
 # Build application and normalize JAR name
 RUN gradle build --no-daemon -x test \
