@@ -22,10 +22,6 @@ WORKDIR /app
 # Copy built JAR
 COPY --from=build /app/app.jar app.jar
 
-# Copy entrypoint
-COPY docker-entrypoint.sh /app/docker-entrypoint.sh
-RUN chmod +x /app/docker-entrypoint.sh
-
 # Expose port
 EXPOSE 8080
 
@@ -33,6 +29,5 @@ EXPOSE 8080
 ENV SPRING_PROFILES_ACTIVE=production
 ENV JAVA_OPTS="-Xmx512m -Xms256m"
 
-# Run application
-ENTRYPOINT ["/app/docker-entrypoint.sh"]
-CMD ["java", "-jar", "/app/app.jar"]
+# Run application (inline entrypoint to avoid build-context missing script issues)
+ENTRYPOINT ["sh", "-c", "set -e; normalize_jdbc_url(){ case \"$1\" in jdbc:*) echo \"$1\" ;; postgres://*) echo \"jdbc:postgresql://${1#postgres://}\" ;; postgresql://*) echo \"jdbc:postgresql://${1#postgresql://}\" ;; *) echo \"$1\" ;; esac; }; if [ -n \"$SPRING_DATASOURCE_URL\" ]; then SPRING_DATASOURCE_URL=\"$(normalize_jdbc_url \"$SPRING_DATASOURCE_URL\")\"; export SPRING_DATASOURCE_URL; elif [ -n \"$DATABASE_URL\" ]; then SPRING_DATASOURCE_URL=\"$(normalize_jdbc_url \"$DATABASE_URL\")\"; export SPRING_DATASOURCE_URL; fi; exec java $JAVA_OPTS -jar /app/app.jar"]
