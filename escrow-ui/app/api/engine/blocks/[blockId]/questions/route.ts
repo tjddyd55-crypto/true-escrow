@@ -62,10 +62,11 @@ export async function POST(
     const body = await request.json();
 
     const type = body.type ?? "SHORT_TEXT";
+    const rawLabel = body.label;
     const label =
-      typeof body.label === "string" && body.label.trim().length > 0
-        ? body.label
-        : "Question";
+      typeof rawLabel === "string" && rawLabel.trim().length > 0
+        ? rawLabel.trim()
+        : "New question";
     const description = body.description ?? null;
     const required = Boolean(body.required);
     const options = body.options ?? null;
@@ -117,7 +118,7 @@ export async function POST(
       { status: 500 }
     );
   } catch (e: unknown) {
-    console.error("POST question error:", e);
+    console.error("Create question error:", e);
     const message =
       e instanceof Error ? e.message : "Failed to create question";
     return NextResponse.json({ ok: false, error: message }, { status: 500 });
