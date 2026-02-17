@@ -37,7 +37,7 @@ export function normalizeQuestionOptions(input: unknown): QuestionOptions {
           const rawId = choiceObj.id;
           const value = typeof rawValue === "string" ? rawValue.trim() : "";
           const label = typeof rawLabel === "string" ? rawLabel.trim() : value;
-          const id = typeof rawId === "string" && rawId.trim() ? rawId.trim() : undefined;
+          const id = typeof rawId === "string" && rawId.trim() ? rawId.trim() : value || undefined;
           if (!value) return null;
           return { id, value, label: label || value };
         })

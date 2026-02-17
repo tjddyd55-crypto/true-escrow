@@ -2,6 +2,18 @@ import { NextRequest, NextResponse } from "next/server";
 import { isDatabaseConfigured, query } from "@/lib/db";
 import * as inMemoryQuestionStore from "@/lib/block-questions/inMemoryQuestionStore";
 
+function buildDefaultOptionsByType(type: string): unknown {
+  if (type === "CHECKBOX" || type === "RADIO" || type === "DROPDOWN") {
+    return {
+      choices: [
+        { id: "option_1", label: "옵션 1", value: "option_1" },
+        { id: "option_2", label: "옵션 2", value: "option_2" },
+      ],
+    };
+  }
+  return {};
+}
+
 type QuestionRow = {
   id: string;
   block_id: string;
@@ -79,12 +91,11 @@ export async function POST(
     const label =
       typeof rawLabel === "string" && rawLabel.trim().length > 0
         ? rawLabel.trim()
-        : "Untitled question";
+        : "New question";
     const description = body.description ?? null;
     const required = Boolean(body.required);
     const allowAttachment = Boolean(body.allowAttachment ?? body.allow_attachment ?? false);
-    // Keep jsonb payload valid even when client does not send options.
-    const options = body.options ?? [];
+    const options = body.options ?? buildDefaultOptionsByType(type);
 
     if (!isDatabaseConfigured()) {
       const created = inMemoryQuestionStore.createQuestion({
