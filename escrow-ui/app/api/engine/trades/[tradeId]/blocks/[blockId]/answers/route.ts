@@ -3,6 +3,8 @@ import { isDatabaseConfigured, query } from "@/lib/db";
 import { validateAnswerByType } from "@/lib/block-questions/validateAnswer";
 import * as store from "@/lib/transaction-engine/store";
 import * as inMemoryQuestionStore from "@/lib/block-questions/inMemoryQuestionStore";
+import * as inMemoryAnswerStore from "@/lib/block-questions/inMemoryAnswerStore";
+import { normalizeQuestionOptions } from "@/lib/block-questions/options";
 
 type QuestionRow = { id: string; type: string; required: boolean; options: unknown };
 
@@ -58,13 +60,29 @@ export async function POST(
           options: q.options,
         }));
     const answerByQ = new Map(answers.map((a) => [a.questionId, a.answer]));
-    const optionsByQ = new Map(questions.map((q) => [q.id, (q.options as string[]) ?? []]));
+    const optionsByQ = new Map(questions.map((q) => [q.id, normalizeQuestionOptions(q.options)]));
 
     for (const q of questions) {
       if (!q.required) continue;
       const value = answerByQ.get(q.id);
       const opts = optionsByQ.get(q.id);
-      const result = validateAnswerByType(q.type, value, opts);
+      let hasAttachment = false;
+      if (q.type === "FILE") {
+        if (isDatabaseConfigured()) {
+          const attachmentCount = await query<{ c: string }>(
+            `SELECT count(*)::text AS c
+             FROM escrow_block_attachments
+             WHERE trade_id = $1
+               AND block_id = $2
+               AND (question_id = $3 OR question_id IS NULL)`,
+            [tradeId, blockId, q.id]
+          );
+          hasAttachment = Number(attachmentCount.rows[0]?.c ?? "0") > 0;
+        } else {
+          hasAttachment = inMemoryAnswerStore.hasAttachmentForRequiredFile(tradeId, blockId, q.id);
+        }
+      }
+      const result = validateAnswerByType(q.type, value, opts, { hasAttachment });
       if (!result.valid) {
         return NextResponse.json(
           { ok: false, error: result.error ?? `Required question ${q.id} not answered` },
@@ -78,7 +96,22 @@ export async function POST(
       const q = questions.find((x) => x.id === a.questionId);
       if (!q) continue;
       const opts = optionsByQ.get(q.id);
-      const result = validateAnswerByType(q.type, a.answer, opts);
+      const hasAttachment =
+        q.type === "FILE"
+          ? isDatabaseConfigured()
+            ? (
+                await query<{ c: string }>(
+                  `SELECT count(*)::text AS c
+                   FROM escrow_block_attachments
+                   WHERE trade_id = $1
+                     AND block_id = $2
+                     AND (question_id = $3 OR question_id IS NULL)`,
+                  [tradeId, blockId, q.id]
+                )
+              ).rows[0]?.c !== "0"
+            : inMemoryAnswerStore.hasAttachmentForRequiredFile(tradeId, blockId, q.id)
+          : false;
+      const result = validateAnswerByType(q.type, a.answer, opts, { hasAttachment });
       if (!result.valid) continue;
       if (isDatabaseConfigured()) {
         await query(
@@ -88,6 +121,14 @@ export async function POST(
            DO UPDATE SET answer = EXCLUDED.answer`,
           [tradeId, blockId, a.questionId, actorRole, JSON.stringify(a.answer)]
         );
+      } else {
+        inMemoryAnswerStore.upsertAnswer({
+          trade_id: tradeId,
+          block_id: blockId,
+          question_id: a.questionId,
+          actor_role: actorRole,
+          answer: a.answer,
+        });
       }
       saved++;
     }

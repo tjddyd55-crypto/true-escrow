@@ -61,7 +61,7 @@ export async function PATCH(
     }
     if (body.options !== undefined) {
       updates.push(`options = $${i++}`);
-      values.push(JSON.stringify(body.options));
+      values.push(body.options);
     }
     if (updates.length === 0) {
       const { rows } = await query<QuestionRow>(

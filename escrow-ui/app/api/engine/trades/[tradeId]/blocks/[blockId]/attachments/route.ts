@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { query } from "@/lib/db";
+import crypto from "crypto";
+import { isDatabaseConfigured, query } from "@/lib/db";
+import * as inMemoryAnswerStore from "@/lib/block-questions/inMemoryAnswerStore";
 
 export async function POST(
   request: NextRequest,
@@ -28,6 +30,22 @@ export async function POST(
     const size = body.size ?? null;
     const storage_provider = "NONE";
     const object_key = null;
+
+    if (!isDatabaseConfigured()) {
+      const id = crypto.randomUUID();
+      inMemoryAnswerStore.createAttachment({
+        id,
+        trade_id: tradeId,
+        block_id: blockId,
+        question_id: questionId,
+        uploader_role: uploaderRole,
+        file_name: fileName,
+        mime,
+        size,
+        status: "PENDING",
+      });
+      return NextResponse.json({ ok: true, data: { attachmentId: id, id } });
+    }
 
     const { rows } = await query<{ id: string }>(
       `INSERT INTO escrow_block_attachments

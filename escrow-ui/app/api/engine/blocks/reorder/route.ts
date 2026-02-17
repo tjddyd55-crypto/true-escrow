@@ -3,9 +3,13 @@ import * as store from "@/lib/transaction-engine/store";
 
 export async function POST(request: NextRequest) {
   try {
-    const body = (await request.json()) as { transactionId?: string; blockIds?: string[] };
+    const body = (await request.json()) as { transactionId?: string; blockIds?: string[]; orderedBlockIds?: string[] };
     const transactionId = body.transactionId;
-    const blockIds = Array.isArray(body.blockIds) ? body.blockIds : [];
+    const blockIds = Array.isArray(body.orderedBlockIds)
+      ? body.orderedBlockIds
+      : Array.isArray(body.blockIds)
+        ? body.blockIds
+        : [];
     if (!transactionId) {
       return NextResponse.json(
         { ok: false, error: "transactionId required" },
@@ -23,7 +27,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const orderByNewIndex = new Map(blockIds.map((id, idx) => [id, idx + 1]));
+    const orderByNewIndex = new Map(blockIds.map((id, idx) => [id, idx]));
     const reordered = existing
       .map((b) => ({ ...b, orderIndex: orderByNewIndex.get(b.id) ?? b.orderIndex }))
       .sort((a, b) => a.orderIndex - b.orderIndex);

@@ -71,7 +71,7 @@ export async function POST(
     const label =
       typeof rawLabel === "string" && rawLabel.trim().length > 0
         ? rawLabel.trim()
-        : "New question";
+        : "Untitled question";
     const description = body.description ?? null;
     const required = Boolean(body.required);
     // Keep jsonb payload valid even when client does not send options.

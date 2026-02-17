@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { useI18n } from "@/lib/i18n/provider";
 
 interface Template {
@@ -11,10 +12,17 @@ interface Template {
   defaults?: Record<string, unknown>;
 }
 
+interface MyTemplate {
+  id: string;
+  title: string;
+  description: string | null;
+}
+
 export default function NewTransactionPage() {
   const router = useRouter();
   const { t, tKey, lang, setLang } = useI18n();
   const [templates, setTemplates] = useState<Template[]>([]);
+  const [myTemplates, setMyTemplates] = useState<MyTemplate[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null);
   const [title, setTitle] = useState("");
@@ -26,10 +34,17 @@ export default function NewTransactionPage() {
 
   async function fetchTemplates() {
     try {
-      const res = await fetch("/api/escrow/templates");
-      if (res.ok) {
-        const data = await res.json();
+      const [templateRes, myTemplateRes] = await Promise.all([
+        fetch("/api/escrow/templates"),
+        fetch("/api/templates"),
+      ]);
+      if (templateRes.ok) {
+        const data = await templateRes.json();
         setTemplates(data.data || []);
+      }
+      if (myTemplateRes.ok) {
+        const data = await myTemplateRes.json();
+        setMyTemplates(data.data || []);
       }
     } catch (error) {
       console.error("Failed to fetch templates:", error);
@@ -78,6 +93,28 @@ export default function NewTransactionPage() {
     } catch (error) {
       console.error("Failed to create transaction:", error);
       alert("Error creating transaction");
+    }
+  }
+
+  async function handleCreateFromMyTemplate(templateId: string) {
+    try {
+      const res = await fetch(`/api/templates/${templateId}/clone-to-trade`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: title.trim() || undefined,
+          description: description.trim() || undefined,
+        }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (res.ok && json.ok && json.data?.tradeId) {
+        router.push(`/transaction/builder/${json.data.tradeId}`);
+        return;
+      }
+      alert(json.error || "Failed to clone template");
+    } catch (e) {
+      console.error("Failed to clone my template:", e);
+      alert("Failed to clone template");
     }
   }
 
@@ -176,6 +213,55 @@ export default function NewTransactionPage() {
             </label>
           ))}
         </div>
+      </div>
+
+      <div style={{ marginBottom: 40 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+          <h2 style={{ fontSize: "1.3rem", margin: 0 }}>내 템플릿</h2>
+          <Link href="/templates" style={{ color: "#0070f3", textDecoration: "none", fontSize: "0.9rem" }}>
+            템플릿 관리
+          </Link>
+        </div>
+        {myTemplates.length === 0 ? (
+          <p style={{ margin: 0, color: "#666", fontSize: "0.9rem" }}>저장된 템플릿이 없습니다. 빌더에서 "템플릿으로 저장"을 사용하세요.</p>
+        ) : (
+          <div style={{ display: "grid", gap: 10 }}>
+            {myTemplates.map((item) => (
+              <div
+                key={item.id}
+                style={{
+                  border: "1px solid #e0e0e0",
+                  borderRadius: 8,
+                  padding: 14,
+                  display: "flex",
+                  justifyContent: "space-between",
+                  gap: 12,
+                  alignItems: "center",
+                }}
+              >
+                <div>
+                  <div style={{ fontWeight: "600" }}>{item.title}</div>
+                  {item.description && <div style={{ color: "#666", fontSize: "0.85rem" }}>{item.description}</div>}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleCreateFromMyTemplate(item.id)}
+                  style={{
+                    padding: "8px 12px",
+                    backgroundColor: "#0ea5e9",
+                    color: "white",
+                    border: "none",
+                    borderRadius: 6,
+                    cursor: "pointer",
+                    fontWeight: "600",
+                  }}
+                >
+                  이 템플릿으로 시작
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       <div style={{ marginBottom: 30 }}>

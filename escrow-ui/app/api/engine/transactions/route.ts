@@ -5,6 +5,7 @@ import { query } from "@/lib/db";
 import { templateSpecSchema } from "@/lib/template-spec.schema";
 import { buildTransactionFromTemplateSpec } from "@/lib/build-transaction-from-spec";
 import { addDays } from "@/lib/transaction-engine/dateUtils";
+import { getBuiltInTemplateByKey } from "@/lib/templates/builtInTemplates";
 
 export async function GET() {
   try {
@@ -22,27 +23,28 @@ export async function POST(request: NextRequest) {
     
     const templateKey = body.template_key ?? body.templateId;
     if (templateKey) {
-      console.log("=== TEMPLATE FETCH START ===");
-
-      const { rows } = await query<{ template_key: string; defaults: unknown }>(
-        "SELECT template_key, defaults FROM escrow_templates WHERE template_key = $1 AND is_active = true",
-        [templateKey]
-      );
-
-      console.log("Template row:", rows[0]);
-
-      if (!rows.length) {
-        console.log("Template not found");
+      let defaults: unknown = null;
+      try {
+        const { rows } = await query<{ template_key: string; defaults: unknown }>(
+          "SELECT template_key, defaults FROM escrow_templates WHERE template_key = $1 AND is_active = true",
+          [templateKey]
+        );
+        if (rows[0]) defaults = rows[0].defaults;
+      } catch {
+        const builtIn = getBuiltInTemplateByKey(templateKey);
+        if (builtIn) defaults = builtIn.defaults;
+      }
+      if (!defaults) {
+        const builtIn = getBuiltInTemplateByKey(templateKey);
+        if (builtIn) defaults = builtIn.defaults;
+      }
+      if (!defaults) {
         return NextResponse.json({ ok: false, error: "Template not found" }, { status: 404 });
       }
 
-      console.log("Raw defaults:", rows[0].defaults);
-
-      const parsed = templateSpecSchema.safeParse(rows[0].defaults);
-      console.log("Parse result:", parsed.success ? "success" : "failure", parsed.success ? undefined : parsed.error?.issues);
+      const parsed = templateSpecSchema.safeParse(defaults);
 
       if (!parsed.success) {
-        console.log("Zod issues:", parsed.error?.issues);
         return NextResponse.json({ ok: false, error: "TemplateSpec validation failed" }, { status: 400 });
       }
 

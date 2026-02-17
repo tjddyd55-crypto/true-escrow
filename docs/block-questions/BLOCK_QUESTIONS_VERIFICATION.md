@@ -63,6 +63,9 @@ curl -s -X DELETE "http://localhost:3000/api/engine/questions/<questionId>"
 curl -s -X POST "http://localhost:3000/api/engine/questions/reorder" \
   -H "Content-Type: application/json" \
   -d '{"blockId":"<blockId>","orderedQuestionIds":["id2","id1"]}'
+
+# Readiness
+curl -s "http://localhost:3000/api/engine/trades/<tradeId>/blocks/<blockId>/readiness"
 ```
 
 ### Answers (required validation)
@@ -84,6 +87,22 @@ curl -s -X POST "http://localhost:3000/api/engine/trades/<tradeId>/blocks/<block
   -H "Content-Type: application/json" \
   -d '{"uploaderRole":"SELLER","fileName":"doc.pdf","mime":"application/pdf","size":1024}'
 # → { "ok": true, "data": { "attachmentId": "...", "id": "..." } }
+```
+
+### My Templates
+```bash
+# Save current trade as my template
+curl -s -X POST "http://localhost:3000/api/templates" \
+  -H "Content-Type: application/json" \
+  -d '{"tradeId":"<tradeId>","title":"My Reusable Flow","description":"for weekly projects"}'
+
+# List mine
+curl -s "http://localhost:3000/api/templates"
+
+# Clone template to new trade
+curl -s -X POST "http://localhost:3000/api/templates/<templateId>/clone-to-trade" \
+  -H "Content-Type: application/json" \
+  -d '{"title":"Cloned trade","startDate":"2026-03-01","endDate":"2026-03-31"}'
 ```
 
 ---

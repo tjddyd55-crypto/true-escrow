@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { query } from "@/lib/db";
+import { isDatabaseConfigured, query } from "@/lib/db";
+import { BUILT_IN_TEMPLATES } from "@/lib/templates/builtInTemplates";
 
 export type EscrowTemplateRow = {
   template_key: string;
@@ -10,16 +11,9 @@ export type EscrowTemplateRow = {
 
 export async function GET() {
   try {
-    // [DEBUG] 운영 서버 DB 연결 확인용 – 확인 후 제거
-    console.log("[DEBUG] DATABASE_URL:", process.env.DATABASE_URL ? "[set]" : "[not set]");
-
-    const debugResult = await query<{ db: string; schema: string; template_count: string }>(`
-      SELECT current_database() AS db,
-             current_schema() AS schema,
-             count(*)::text AS template_count
-      FROM escrow_templates
-    `);
-    console.log("[DEBUG] DB DEBUG:", debugResult.rows);
+    if (!isDatabaseConfigured()) {
+      return NextResponse.json({ ok: true, data: BUILT_IN_TEMPLATES });
+    }
 
     const result = await query<EscrowTemplateRow>(`
       SELECT template_key, label_key, description_key, defaults
@@ -27,9 +21,10 @@ export async function GET() {
       WHERE is_active = true
       ORDER BY created_at ASC
     `);
-    return NextResponse.json({ ok: true, data: result.rows });
+    const rows = result.rows.length > 0 ? result.rows : BUILT_IN_TEMPLATES;
+    return NextResponse.json({ ok: true, data: rows });
   } catch (e) {
     console.error("[API] GET /api/escrow/templates error:", e);
-    return NextResponse.json({ ok: true, data: [] });
+    return NextResponse.json({ ok: true, data: BUILT_IN_TEMPLATES });
   }
 }

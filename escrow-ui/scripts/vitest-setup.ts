@@ -8,5 +8,10 @@ import os from "os";
 const testDataFile = path.join(os.tmpdir(), "escrow-engine-test.json");
 process.env.TRANSACTION_ENGINE_DATA_FILE = testDataFile;
 if (fs.existsSync(testDataFile)) {
-  fs.unlinkSync(testDataFile);
+  try {
+    fs.unlinkSync(testDataFile);
+  } catch (e: unknown) {
+    const code = (e as { code?: string }).code;
+    if (code !== "ENOENT") throw e;
+  }
 }

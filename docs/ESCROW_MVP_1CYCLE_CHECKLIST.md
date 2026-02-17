@@ -72,6 +72,16 @@
   Add Question, type/label/required/options, stable keys (`question.id`), reorder (up/down or drag).
 - [ ] **Block reorder**  
   Up/down or drag persists via reorder endpoint; date policy enforced; no unintended append of blocks/orderIndex.
+- [ ] **Template list present on /transaction/new**  
+  Blank + 예시 템플릿 2개 + 내 템플릿이 함께 보인다.
+- [ ] **Google-Forms-like question authoring**  
+  질문 추가/수정/복제/삭제/순서 변경(드래그 or up/down), 타입별 옵션 편집(checkbox/radio/dropdown/grid/number) 동작.
+- [ ] **File question metadata flow**  
+  FILE 질문에서 첨부 메타데이터 API 호출 후 readiness 계산 시 필수 첨부로 반영된다.
+- [ ] **Readiness badge correctness**  
+  `/api/engine/trades/[tradeId]/blocks/[blockId]/readiness` 결과와 Builder READY/NOT READY 배지가 일치한다.
+- [ ] **No append/duplicate regression**  
+  reorder/save 이후 `saveTransactionGraph` replace-only 정책 유지, 배열 중복 누적 없음.
 
 ---
 

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { useI18n } from "@/lib/i18n/provider";
+import { BlockQuestionBuilder, type BlockQuestion } from "@/components/question-builder/BlockQuestionBuilder";
 import type {
   TransactionGraph,
   Transaction,
@@ -21,20 +22,6 @@ import { daysBetween } from "@/lib/transaction-engine/dateUtils";
 import { TransactionCalendar, BLOCK_COLORS } from "@/components/TransactionCalendar";
 import { useAutoSave, useAutoSaveByKey, SaveStatusIndicator } from "@/lib/hooks/useAutoSave";
 
-export type BlockQuestion = {
-  id: string;
-  block_id: string;
-  order_index: number;
-  type: string;
-  label: string | null;
-  description: string | null;
-  required: boolean;
-  options?: unknown;
-  created_at?: string;
-};
-
-const QUESTION_TYPES = ["SHORT_TEXT", "LONG_TEXT", "CHECKBOX", "DROPDOWN", "DATE", "FILE", "NUMBER"] as const;
-
 export default function TransactionBuilderPage() {
   const params = useParams();
   const transactionId = params.id as string;
@@ -49,6 +36,8 @@ export default function TransactionBuilderPage() {
   const [localTxTitle, setLocalTxTitle] = useState<string | undefined>(undefined);
   const [localTxDesc, setLocalTxDesc] = useState<string | undefined>(undefined);
   const [blockQuestionsByBlockId, setBlockQuestionsByBlockId] = useState<Record<string, BlockQuestion[]>>({});
+  const [attachmentMetaByQuestionId, setAttachmentMetaByQuestionId] = useState<Record<string, Array<{ id: string; fileName: string; status: string }>>>({});
+  const [blockReadinessByBlockId, setBlockReadinessByBlockId] = useState<Record<string, { ready: boolean; missingRequired: Array<{ questionId: string; reason: string }> }>>({});
   const { status: saveStatusTxTitle, triggerSave: triggerSaveTxTitle } = useAutoSave();
   const { status: saveStatusTxDesc, triggerSave: triggerSaveTxDesc } = useAutoSave();
   const { getStatus: getBlockSaveStatus, triggerSave: triggerSaveBlock } = useAutoSaveByKey();
@@ -56,6 +45,8 @@ export default function TransactionBuilderPage() {
   const [addApproverBlockId, setAddApproverBlockId] = useState<string | null>(null);
   const [addApproverRole, setAddApproverRole] = useState<ApproverRole>("VERIFIER");
   const [addApproverDisplayName, setAddApproverDisplayName] = useState("");
+  const [draggingBlockId, setDraggingBlockId] = useState<string | null>(null);
+  const [dropTargetBlockId, setDropTargetBlockId] = useState<string | null>(null);
 
   const APPROVER_ROLES: ApproverRole[] = ["BUYER", "SELLER", "VERIFIER", "ADMIN"];
   const WORK_RULE_TYPES: WorkRuleType[] = ["BLOG", "CUSTOM", "REVIEW", "SIGN_OFF", "DELIVERY", "DOCUMENT", "INSPECTION"];
@@ -75,10 +66,24 @@ export default function TransactionBuilderPage() {
     }
   }
 
+  async function fetchBlockReadiness(blockId: string) {
+    const res = await fetch(`/api/engine/trades/${transactionId}/blocks/${blockId}/readiness`, { cache: "no-store" });
+    if (!res.ok) return;
+    const json = await res.json();
+    if (json.ok && json.data) {
+      setBlockReadinessByBlockId((prev) => ({ ...prev, [blockId]: json.data }));
+    }
+  }
+
   useEffect(() => {
     if (!graph?.blocks?.length) return;
     graph.blocks.forEach((b) => fetchBlockQuestions(b.id));
   }, [graph?.blocks?.map((b) => b.id).join(",")]);
+
+  useEffect(() => {
+    if (!graph?.blocks?.length) return;
+    graph.blocks.forEach((b) => fetchBlockReadiness(b.id));
+  }, [graph?.blocks?.map((b) => b.id).join(","), transactionId]);
 
   async function fetchData() {
     try {
@@ -282,11 +287,14 @@ export default function TransactionBuilderPage() {
       const res = await fetch(`/api/engine/blocks/${blockId}/questions`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type: "SHORT_TEXT", label: t.questionLabel || "New question", required: false }),
+        body: JSON.stringify({ type: "SHORT_TEXT", label: "Untitled question", required: false }),
       });
       if (res.ok) {
         const json = await res.json();
-        if (json.ok) await fetchBlockQuestions(blockId);
+        if (json.ok) {
+          await fetchBlockQuestions(blockId);
+          await fetchBlockReadiness(blockId);
+        }
       } else {
         const err = await res.json().catch(() => ({}));
         console.error("Failed to add question:", err);
@@ -306,7 +314,10 @@ export default function TransactionBuilderPage() {
       });
       if (res.ok) {
         const json = await res.json();
-        if (json.ok && json.data?.block_id) await fetchBlockQuestions(json.data.block_id);
+        if (json.ok && json.data?.block_id) {
+          await fetchBlockQuestions(json.data.block_id);
+          await fetchBlockReadiness(json.data.block_id);
+        }
       }
     } catch (e) {
       console.error("Failed to update question:", e);
@@ -316,7 +327,10 @@ export default function TransactionBuilderPage() {
   async function deleteQuestion(questionId: string, blockId: string) {
     try {
       const res = await fetch(`/api/engine/questions/${questionId}`, { method: "DELETE" });
-      if (res.ok) await fetchBlockQuestions(blockId);
+      if (res.ok) {
+        await fetchBlockQuestions(blockId);
+        await fetchBlockReadiness(blockId);
+      }
     } catch (e) {
       console.error("Failed to delete question:", e);
     }
@@ -329,10 +343,104 @@ export default function TransactionBuilderPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ blockId, orderedQuestionIds }),
       });
-      if (res.ok) await fetchBlockQuestions(blockId);
+      if (res.ok) {
+        await fetchBlockQuestions(blockId);
+        await fetchBlockReadiness(blockId);
+      }
     } catch (e) {
       console.error("Failed to reorder questions:", e);
     }
+  }
+
+  async function createAttachmentMetadata(args: { blockId: string; questionId: string; file: File }) {
+    try {
+      const res = await fetch(`/api/engine/trades/${transactionId}/blocks/${args.blockId}/attachments`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          uploaderRole: "SELLER",
+          questionId: args.questionId,
+          fileName: args.file.name,
+          mime: args.file.type || "application/octet-stream",
+          size: args.file.size,
+        }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (res.ok && json.ok && json.data?.id) {
+        setAttachmentMetaByQuestionId((prev) => ({
+          ...prev,
+          [args.questionId]: [
+            ...(prev[args.questionId] ?? []),
+            {
+              id: json.data.id,
+              fileName: args.file.name,
+              status: "PENDING",
+            },
+          ],
+        }));
+        await fetchBlockReadiness(args.blockId);
+      }
+    } catch (e) {
+      console.error("Failed to create attachment metadata:", e);
+    }
+  }
+
+  async function duplicateQuestion(blockId: string, source: BlockQuestion) {
+    try {
+      const created = await fetch(`/api/engine/blocks/${blockId}/questions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: source.type,
+          label: source.label || "Untitled question",
+          description: source.description,
+          required: source.required,
+          options: source.options ?? {},
+        }),
+      });
+      if (created.ok) {
+        await fetchBlockQuestions(blockId);
+        await fetchBlockReadiness(blockId);
+      }
+    } catch (e) {
+      console.error("Failed to duplicate question:", e);
+    }
+  }
+
+  async function reorderBlocks(orderedBlockIds: string[]) {
+    try {
+      const res = await fetch("/api/engine/blocks/reorder", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ transactionId, orderedBlockIds }),
+      });
+      if (res.ok) await fetchData();
+    } catch (e) {
+      console.error("Failed to reorder blocks:", e);
+    }
+  }
+
+  function onBlockDrop(targetBlockId: string) {
+    if (!graph || !draggingBlockId || draggingBlockId === targetBlockId) {
+      setDraggingBlockId(null);
+      setDropTargetBlockId(null);
+      return;
+    }
+    const ordered = [...graph.blocks]
+      .sort((a, b) => a.orderIndex - b.orderIndex)
+      .map((b) => b.id);
+    const from = ordered.indexOf(draggingBlockId);
+    const to = ordered.indexOf(targetBlockId);
+    if (from < 0 || to < 0) {
+      setDraggingBlockId(null);
+      setDropTargetBlockId(null);
+      return;
+    }
+    const [moved] = ordered.splice(from, 1);
+    ordered.splice(to, 0, moved);
+    reorderBlocks(ordered);
+    setDraggingBlockId(null);
+    setDropTargetBlockId(null);
   }
 
   async function activateTransaction() {
@@ -348,6 +456,28 @@ export default function TransactionBuilderPage() {
       }
     } catch (error) {
       console.error("Failed to activate transaction:", error);
+    }
+  }
+
+  async function saveAsTemplate() {
+    const title = prompt("템플릿 이름을 입력하세요");
+    if (!title || !title.trim()) return;
+    const description = prompt("템플릿 설명 (선택)") ?? "";
+    try {
+      const res = await fetch("/api/templates", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tradeId: transactionId, title: title.trim(), description: description.trim() || undefined }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (res.ok && json.ok) {
+        alert("템플릿으로 저장되었습니다.");
+      } else {
+        alert(json.error || "템플릿 저장에 실패했습니다.");
+      }
+    } catch (e) {
+      console.error("Failed to save template:", e);
+      alert("템플릿 저장 중 오류가 발생했습니다.");
     }
   }
 
@@ -604,6 +734,23 @@ export default function TransactionBuilderPage() {
             >
               {t.executionPlan?.preview ?? "Preview"}
             </Link>
+            {isDraft && (
+              <button
+                type="button"
+                onClick={saveAsTemplate}
+                style={{
+                  padding: "8px 16px",
+                  backgroundColor: "#0ea5e9",
+                  color: "white",
+                  border: "none",
+                  borderRadius: 4,
+                  cursor: "pointer",
+                  fontWeight: "600",
+                }}
+              >
+                템플릿으로 저장
+              </button>
+            )}
             <span
               style={{
                 padding: "4px 12px",
@@ -675,18 +822,40 @@ export default function TransactionBuilderPage() {
                 return (
                   <div
                     key={block.id}
+                    draggable={isDraft}
+                    onDragStart={() => {
+                      if (!isDraft) return;
+                      setDraggingBlockId(block.id);
+                    }}
+                    onDragOver={(e) => {
+                      if (!isDraft || !draggingBlockId) return;
+                      e.preventDefault();
+                      setDropTargetBlockId(block.id);
+                    }}
+                    onDrop={(e) => {
+                      if (!isDraft) return;
+                      e.preventDefault();
+                      onBlockDrop(block.id);
+                    }}
+                    onDragEnd={() => {
+                      setDraggingBlockId(null);
+                      setDropTargetBlockId(null);
+                    }}
                     style={{
                       padding: 20,
                       border: "1px solid #e0e0e0",
                       borderLeft: `4px solid ${blockColor}`,
                       borderRadius: 8,
                       backgroundColor: block.isActive ? "#f0f9ff" : "white",
+                      boxShadow: dropTargetBlockId === block.id ? "0 0 0 2px #6366f1 inset" : undefined,
+                      cursor: isDraft ? "grab" : "default",
                     }}
                   >
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start", marginBottom: 15 }}>
                       <div style={{ flex: 1 }}>
                         {isDraft ? (
                           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 5 }}>
+                            <span title="Drag to reorder block" style={{ color: "#6b7280", cursor: "grab", userSelect: "none" }}>⋮⋮</span>
                             <span
                               style={{
                                 width: 12,
@@ -765,6 +934,18 @@ export default function TransactionBuilderPage() {
                           style={{
                             padding: "4px 12px",
                             borderRadius: 4,
+                            backgroundColor: blockReadinessByBlockId[block.id]?.ready ? "#16a34a" : "#b91c1c",
+                            color: "white",
+                            fontSize: "0.75rem",
+                            fontWeight: "700",
+                          }}
+                        >
+                          {blockReadinessByBlockId[block.id]?.ready ? "READY" : "NOT READY"}
+                        </span>
+                        <span
+                          style={{
+                            padding: "4px 12px",
+                            borderRadius: 4,
                             backgroundColor: block.isActive ? "#00b894" : "#f39c12",
                             color: "white",
                             fontSize: "0.85rem",
@@ -773,6 +954,34 @@ export default function TransactionBuilderPage() {
                         >
                           {block.isActive ? t.active : t.locked}
                         </span>
+                        {isDraft && graph.blocks.length > 1 && (
+                          <>
+                            {blockIndex > 0 && (
+                              <button
+                                onClick={() => {
+                                  const next = [...graph.blocks];
+                                  [next[blockIndex - 1], next[blockIndex]] = [next[blockIndex], next[blockIndex - 1]];
+                                  reorderBlocks(next.map((b) => b.id));
+                                }}
+                                style={{ padding: "4px 8px", fontSize: "0.8rem" }}
+                              >
+                                ↑ Block
+                              </button>
+                            )}
+                            {blockIndex < graph.blocks.length - 1 && (
+                              <button
+                                onClick={() => {
+                                  const next = [...graph.blocks];
+                                  [next[blockIndex], next[blockIndex + 1]] = [next[blockIndex + 1], next[blockIndex]];
+                                  reorderBlocks(next.map((b) => b.id));
+                                }}
+                                style={{ padding: "4px 8px", fontSize: "0.8rem" }}
+                              >
+                                ↓ Block
+                              </button>
+                            )}
+                          </>
+                        )}
                         {isDraft && graph.blocks.length > 1 && (
                           <button
                             onClick={() => deleteBlock(block.id)}
@@ -964,112 +1173,30 @@ export default function TransactionBuilderPage() {
                       )}
                     </div>
 
-                    {/* Block Questions (Google Forms style) */}
-                    <div style={{ marginBottom: 15, padding: 10, backgroundColor: "#f0fdf4", borderRadius: 4 }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-                        <h4 style={{ margin: 0, fontSize: "1rem" }}>{t.blockQuestions}</h4>
-                        {isDraft && (
-                          <button
-                            type="button"
-                            onClick={() => addQuestion(block.id)}
-                            style={{
-                              padding: "4px 8px",
-                              backgroundColor: "#16a34a",
-                              color: "white",
-                              border: "none",
-                              borderRadius: 4,
-                              cursor: "pointer",
-                              fontSize: "0.85rem",
-                            }}
-                          >
-                            {t.addQuestion}
-                          </button>
-                        )}
-                      </div>
-                      {(blockQuestionsByBlockId[block.id] ?? []).map((q) => (
-                        <div key={q.id} style={{ padding: 10, marginBottom: 8, border: "1px solid #e0e0e0", borderRadius: 4, backgroundColor: "white" }}>
-                          {isDraft ? (
-                            <>
-                              <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 6, flexWrap: "wrap" }}>
-                                <select
-                                  value={q.type}
-                                  onChange={(e) => updateQuestion(q.id, { type: e.target.value })}
-                                  style={{ padding: 4, border: "1px solid #e0e0e0", borderRadius: 4, fontSize: "0.85rem" }}
-                                >
-                                  {QUESTION_TYPES.map((qt) => (
-                                    <option key={qt} value={qt}>{qt}</option>
-                                  ))}
-                                </select>
-                                <label style={{ fontSize: "0.85rem", display: "flex", alignItems: "center", gap: 4 }}>
-                                  <input
-                                    type="checkbox"
-                                    checked={q.required}
-                                    onChange={(e) => updateQuestion(q.id, { required: e.target.checked })}
-                                  />
-                                  {t.required}
-                                </label>
-                              </div>
-                              <input
-                                type="text"
-                                value={q.label ?? ""}
-                                onChange={(e) => updateQuestion(q.id, { label: e.target.value })}
-                                onBlur={() => fetchBlockQuestions(block.id)}
-                                placeholder={t.questionLabel}
-                                style={{ width: "100%", padding: 6, marginBottom: 4, border: "1px solid #e0e0e0", borderRadius: 4 }}
-                              />
-                              <input
-                                type="text"
-                                value={q.description ?? ""}
-                                onChange={(e) => updateQuestion(q.id, { description: e.target.value })}
-                                onBlur={() => fetchBlockQuestions(block.id)}
-                                placeholder={t.questionDescription}
-                                style={{ width: "100%", padding: 6, marginBottom: 4, border: "1px solid #e0e0e0", borderRadius: 4, fontSize: "0.9rem" }}
-                              />
-                              {(q.type === "CHECKBOX" || q.type === "DROPDOWN") && (
-                                <div style={{ marginTop: 6 }}>
-                                  <span style={{ fontSize: "0.85rem", color: "#666" }}>{t.options}: </span>
-                                  <input
-                                    type="text"
-                                    value={Array.isArray(q.options) ? (q.options as string[]).join(", ") : ""}
-                                    onChange={(e) => {
-                                      const opts = e.target.value.split(",").map((s) => s.trim()).filter(Boolean);
-                                      updateQuestion(q.id, { options: opts });
-                                    }}
-                                    onBlur={() => fetchBlockQuestions(block.id)}
-                                    placeholder="Option A, Option B"
-                                    style={{ width: "100%", padding: 4, border: "1px solid #e0e0e0", borderRadius: 4 }}
-                                  />
-                                </div>
-                              )}
-                              {q.type === "DATE" && (
-                                <p style={{ margin: "4px 0 0", fontSize: "0.8rem", color: "#666" }}>{t.datePickerNote}</p>
-                              )}
-                              {q.type === "FILE" && (
-                                <p style={{ margin: "4px 0 0", fontSize: "0.8rem", color: "#666" }}>{t.fileUploadPlaceholder}</p>
-                              )}
-                              <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-                                <button type="button" onClick={() => deleteQuestion(q.id, block.id)} style={{ padding: "2px 6px", backgroundColor: "#e74c3c", color: "white", border: "none", borderRadius: 4, cursor: "pointer", fontSize: "0.8rem" }}>{t.delete}</button>
-                                {(blockQuestionsByBlockId[block.id] ?? []).indexOf(q) > 0 && (
-                                  <button type="button" onClick={() => { const list = blockQuestionsByBlockId[block.id] ?? []; const idx = list.findIndex((x) => x.id === q.id); if (idx <= 0) return; const next = [...list]; [next[idx - 1], next[idx]] = [next[idx], next[idx - 1]]; reorderQuestions(block.id, next.map((x) => x.id)); }} style={{ padding: "2px 6px", fontSize: "0.8rem" }}>↑</button>
-                                )}
-                                {(blockQuestionsByBlockId[block.id] ?? []).indexOf(q) < (blockQuestionsByBlockId[block.id]?.length ?? 0) - 1 && (
-                                  <button type="button" onClick={() => { const list = blockQuestionsByBlockId[block.id] ?? []; const idx = list.findIndex((x) => x.id === q.id); if (idx < 0 || idx >= list.length - 1) return; const next = [...list]; [next[idx], next[idx + 1]] = [next[idx + 1], next[idx]]; reorderQuestions(block.id, next.map((x) => x.id)); }} style={{ padding: "2px 6px", fontSize: "0.8rem" }}>↓</button>
-                                )}
-                              </div>
-                            </>
-                          ) : (
-                            <div>
-                              <div style={{ fontWeight: "600" }}>{q.label || q.type}</div>
-                              {q.description && <div style={{ fontSize: "0.85rem", color: "#666" }}>{q.description}</div>}
-                              <span style={{ fontSize: "0.75rem", color: "#999" }}>{q.type}{q.required ? " · " + t.required : ""}</span>
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                      {(blockQuestionsByBlockId[block.id] ?? []).length === 0 && (
-                        <p style={{ fontSize: "0.85rem", color: "#666", fontStyle: "italic", margin: 0 }}>{t.noQuestionsYet}</p>
-                      )}
-                    </div>
+                    <BlockQuestionBuilder
+                      blockId={block.id}
+                      isDraft={isDraft}
+                      questions={blockQuestionsByBlockId[block.id] ?? []}
+                      onAddQuestion={addQuestion}
+                      onUpdateQuestion={updateQuestion}
+                      onDeleteQuestion={deleteQuestion}
+                      onReorderQuestions={reorderQuestions}
+                      onDuplicateQuestion={duplicateQuestion}
+                      attachmentsByQuestionId={attachmentMetaByQuestionId}
+                      onCreateAttachmentMetadata={createAttachmentMetadata}
+                      t={{
+                        blockQuestions: t.blockQuestions,
+                        addQuestion: t.addQuestion,
+                        required: t.required,
+                        questionLabel: t.questionLabel,
+                        questionDescription: t.questionDescription,
+                        options: t.options,
+                        delete: t.delete,
+                        noQuestionsYet: t.noQuestionsYet,
+                        datePickerNote: t.datePickerNote,
+                        fileUploadPlaceholder: t.fileUploadPlaceholder,
+                      }}
+                    />
 
                     {/* Work Rules */}
                     <div style={{ marginBottom: 15 }}>

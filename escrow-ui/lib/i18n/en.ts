@@ -47,7 +47,7 @@ export const en = {
   noQuestionsYet: "No questions yet.",
 
   // Work Rules
-  workRules: "Work Rules",
+  workRules: "Question-based Conditions (Work Rules)",
   addRule: "+ Add Rule",
   workType: "Work Type",
   workRuleTitle: "Title",

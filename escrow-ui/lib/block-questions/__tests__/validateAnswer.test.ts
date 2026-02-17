@@ -19,10 +19,30 @@ describe("validateAnswerByType", () => {
     expect(validateAnswerByType("DROPDOWN", "")).toEqual({ valid: false, error: "Dropdown selection is required" });
   });
   it("DROPDOWN: valid option", () => {
-    expect(validateAnswerByType("DROPDOWN", "A", ["A", "B"])).toEqual({ valid: true });
+    expect(
+      validateAnswerByType("DROPDOWN", "A", {
+        choices: [
+          { value: "A", label: "A" },
+          { value: "B", label: "B" },
+        ],
+      })
+    ).toEqual({ valid: true });
   });
   it("DROPDOWN: invalid option", () => {
-    expect(validateAnswerByType("DROPDOWN", "C", ["A", "B"])).toEqual({ valid: false, error: "Invalid dropdown option" });
+    expect(
+      validateAnswerByType("DROPDOWN", "C", {
+        choices: [
+          { value: "A", label: "A" },
+          { value: "B", label: "B" },
+        ],
+      })
+    ).toEqual({ valid: false, error: "Invalid dropdown option" });
+  });
+  it("CHECKBOX: empty invalid for required", () => {
+    expect(validateAnswerByType("CHECKBOX", [])).toEqual({
+      valid: false,
+      error: "At least one checkbox option is required",
+    });
   });
   it("DATE: invalid format", () => {
     expect(validateAnswerByType("DATE", "not-a-date")).toEqual({ valid: false, error: "Date must be YYYY-MM-DD" });
@@ -39,7 +59,34 @@ describe("validateAnswerByType", () => {
   it("NUMBER: numeric string valid", () => {
     expect(validateAnswerByType("NUMBER", "42")).toEqual({ valid: true });
   });
-  it("FILE: always valid (placeholder)", () => {
-    expect(validateAnswerByType("FILE", null)).toEqual({ valid: true });
+  it("FILE: requires attachment for required check", () => {
+    expect(validateAnswerByType("FILE", null)).toEqual({ valid: false, error: "File attachment is required" });
+    expect(validateAnswerByType("FILE", null, undefined, { hasAttachment: true })).toEqual({ valid: true });
+  });
+  it("RADIO: validates allowed choice", () => {
+    expect(
+      validateAnswerByType("RADIO", "A", {
+        choices: [
+          { value: "A", label: "A" },
+          { value: "B", label: "B" },
+        ],
+      })
+    ).toEqual({ valid: true });
+    expect(
+      validateAnswerByType("RADIO", "C", {
+        choices: [
+          { value: "A", label: "A" },
+          { value: "B", label: "B" },
+        ],
+      })
+    ).toEqual({ valid: false, error: "Invalid radio option" });
+  });
+  it("GRID_SINGLE: validates row and column", () => {
+    expect(
+      validateAnswerByType("GRID_SINGLE", { row: "품질", column: "좋음" }, { rows: ["품질"], columns: ["좋음", "보통"] })
+    ).toEqual({ valid: true });
+    expect(
+      validateAnswerByType("GRID_SINGLE", { row: "속도", column: "좋음" }, { rows: ["품질"], columns: ["좋음"] })
+    ).toEqual({ valid: false, error: "Invalid grid row" });
   });
 });

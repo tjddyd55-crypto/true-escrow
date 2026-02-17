@@ -47,7 +47,7 @@ export const ko = {
   noQuestionsYet: "아직 질문이 없습니다.",
 
   // Work Rules
-  workRules: "작업 규칙",
+  workRules: "질문 기반 조건 (작업 규칙)",
   addRule: "+ 작업 규칙 추가",
   workType: "작업 유형",
   workRuleTitle: "제목",

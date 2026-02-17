@@ -6,6 +6,7 @@ import Link from "next/link";
 import type { TransactionGraph } from "@/lib/transaction-engine/types";
 import { BlockSummary } from "@/components/BlockSummary";
 import { TransactionCalendar } from "@/components/TransactionCalendar";
+import { BlockQuestionAnswerForm } from "@/components/questions/BlockQuestionAnswerForm";
 
 function StatusBadge({ status }: { status: string }) {
   const style =
@@ -117,6 +118,9 @@ export default function TransactionBuyerViewPage() {
             txStartDate={txStart}
           />
         </div>
+      )}
+      {currentBlock && (
+        <BlockQuestionAnswerForm tradeId={transactionId} blockId={currentBlock.id} actorRole="BUYER" />
       )}
 
       {/* Main: Left = My Actions, Right = Calendar */}

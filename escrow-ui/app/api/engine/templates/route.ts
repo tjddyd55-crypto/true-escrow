@@ -1,17 +1,22 @@
 import { NextResponse } from "next/server";
-import { query } from "@/lib/db";
+import { isDatabaseConfigured, query } from "@/lib/db";
+import { BUILT_IN_TEMPLATES } from "@/lib/templates/builtInTemplates";
 
 export async function GET() {
   try {
+    if (!isDatabaseConfigured()) {
+      return NextResponse.json({ ok: true, data: BUILT_IN_TEMPLATES });
+    }
     const result = await query<{ template_key: string; label_key: string; description_key: string | null; defaults: unknown }>(`
       SELECT template_key, label_key, description_key, defaults
       FROM escrow_templates
       WHERE is_active = true
       ORDER BY created_at ASC
     `);
-    return NextResponse.json({ ok: true, data: result.rows });
+    const rows = result.rows.length > 0 ? result.rows : BUILT_IN_TEMPLATES;
+    return NextResponse.json({ ok: true, data: rows });
   } catch (e) {
     console.error("[API] GET /api/engine/templates error:", e);
-    return NextResponse.json({ ok: true, data: [] });
+    return NextResponse.json({ ok: true, data: BUILT_IN_TEMPLATES });
   }
 }
