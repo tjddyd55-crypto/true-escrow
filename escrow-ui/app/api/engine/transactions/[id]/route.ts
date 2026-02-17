@@ -24,8 +24,8 @@ export async function GET(
       blocks,
       approvalPolicies: blocks.map((b) => store.getApprovalPolicy(b.approvalPolicyId)).filter(Boolean) as any[],
       blockApprovers: blocks.flatMap((b) => store.getBlockApprovers(b.id)),
-      workRules: blocks.flatMap((b) => store.getWorkRules(b.id)),
-      workItems: blocks.flatMap((b) => store.getWorkItemsByBlock(b.id)),
+      workRules: [],
+      workItems: [],
     };
     
     console.log("[API] Returning graph:", {
@@ -71,8 +71,8 @@ export async function PATCH(
       blocks,
       approvalPolicies: blocks.map((b) => store.getApprovalPolicy(b.approvalPolicyId)).filter(Boolean) as any[],
       blockApprovers: blocks.flatMap((b) => store.getBlockApprovers(b.id)),
-      workRules: blocks.flatMap((b) => store.getWorkRules(b.id)),
-      workItems: blocks.flatMap((b) => store.getWorkItemsByBlock(b.id)),
+      workRules: [],
+      workItems: [],
     };
     store.saveTransactionGraph(graph);
 

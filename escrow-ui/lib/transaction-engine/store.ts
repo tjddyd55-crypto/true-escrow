@@ -112,8 +112,7 @@ function saveToFile(): void {
         blocks,
         approvalPolicies,
         blockApprovers,
-        workRules,
-        workItems,
+        // Deprecated: workRules/workItems are intentionally excluded from persistence.
       }, null, 2)
     );
   } catch (error) {
@@ -299,18 +298,6 @@ export function addBlockWithAutoSplit(
     role: "BUYER",
     required: true,
   };
-  const totalDays = daysBetween(tx.startDate, tx.endDate);
-  const dueDay = Math.min(daysBetween(tx.startDate, newBlock.endDate), totalDays);
-  const newWorkRule: WorkRule = {
-    id: generateId(),
-    blockId: newBlock.id,
-    workType: "CUSTOM",
-    title: newBlock.title,
-    quantity: 1,
-    frequency: "ONCE",
-    dueDates: [dueDay],
-  };
-
   const updatedBlocks: Block[] = existing.map((b) => {
     if (b.id === longest.id) {
       return { ...b, endDate: mid };
@@ -333,7 +320,7 @@ export function addBlockWithAutoSplit(
     blocks: updatedBlocks,
     approvalPolicies: [...approvalPoliciesForTx, newPolicy],
     blockApprovers: [...blockApproversForTx, newApprover],
-    workRules: [...workRulesForTx, newWorkRule],
+    workRules: workRulesForTx,
     workItems: workItemsForTx,
   };
   saveTransactionGraph(graph);
@@ -353,11 +340,6 @@ export function saveTransactionGraph(graph: TransactionGraph): void {
   if (policyIds.size !== graph.approvalPolicies.length) throw new Error("Duplicate approvalPolicies detected");
   const approverIds = new Set(graph.blockApprovers.map((a) => a.id));
   if (approverIds.size !== graph.blockApprovers.length) throw new Error("Duplicate blockApprovers detected");
-  const ruleIds = new Set(graph.workRules.map((r) => r.id));
-  if (ruleIds.size !== graph.workRules.length) throw new Error("Duplicate workRules detected");
-  const itemIds = new Set(graph.workItems.map((w) => w.id));
-  if (itemIds.size !== graph.workItems.length) throw new Error("Duplicate workItems detected");
-
   // Replace only: remove this graph's entities, then assign graph's (no append/merge)
   const txId = graph.transaction.id;
   const blockIdList = graph.blocks.map((b) => b.id);
@@ -366,25 +348,16 @@ export function saveTransactionGraph(graph: TransactionGraph): void {
   if (txIndex >= 0) {
     transactions[txIndex] = graph.transaction;
   } else {
-    transactions.push(graph.transaction);
+    transactions = [...transactions, graph.transaction];
   }
 
-  blocks = blocks.filter((b) => b.transactionId !== txId);
-  blocks = blocks.concat(graph.blocks);
+  blocks = [...blocks.filter((b) => b.transactionId !== txId), ...graph.blocks];
 
   const graphPolicyIds = new Set(graph.approvalPolicies.map((p) => p.id));
-  approvalPolicies = approvalPolicies.filter((p) => !graphPolicyIds.has(p.id));
-  approvalPolicies = approvalPolicies.concat(graph.approvalPolicies);
+  approvalPolicies = [...approvalPolicies.filter((p) => !graphPolicyIds.has(p.id)), ...graph.approvalPolicies];
 
-  blockApprovers = blockApprovers.filter((ba) => !blockIdList.includes(ba.blockId));
-  blockApprovers = blockApprovers.concat(graph.blockApprovers);
-
-  workRules = workRules.filter((wr) => !blockIdList.includes(wr.blockId));
-  workRules = workRules.concat(graph.workRules);
-
-  const graphRuleIds = new Set(graph.workRules.map((r) => r.id));
-  workItems = workItems.filter((wi) => !graphRuleIds.has(wi.workRuleId));
-  workItems = workItems.concat(graph.workItems);
+  blockApprovers = [...blockApprovers.filter((ba) => !blockIdList.includes(ba.blockId)), ...graph.blockApprovers];
+  // Deprecated: ignore graph.workRules / graph.workItems (legacy read-only data).
 
   saveToFile();
 }
@@ -406,7 +379,6 @@ export function activateTransaction(id: string): Transaction {
   if (txBlocks.length > 0) {
     const firstBlock = txBlocks[0];
     firstBlock.isActive = true;
-    generateWorkItemsForBlock(firstBlock.id);
     appendLog(id, "ADMIN", "BLOCK_ACTIVATED", { blockId: firstBlock.id });
   }
 
@@ -726,15 +698,6 @@ export function approveBlock(blockId: string): Block {
     throw new Error("Only active blocks can be approved");
   }
 
-  // Check if all work items are approved
-  const ruleIds = workRules.filter((r) => r.blockId === blockId).map((r) => r.id);
-  const items = workItems.filter((wi) => ruleIds.includes(wi.workRuleId));
-  const allApproved = items.length > 0 && items.every((i) => i.status === "APPROVED");
-  
-  if (!allApproved) {
-    throw new Error("All work items must be approved before block approval");
-  }
-
   block.isActive = false;
   appendLog(block.transactionId, "BUYER", "BLOCK_APPROVED", { blockId });
 
@@ -746,7 +709,6 @@ export function approveBlock(blockId: string): Block {
   
   if (nextBlock) {
     nextBlock.isActive = true;
-    generateWorkItemsForBlock(nextBlock.id);
     appendLog(block.transactionId, "ADMIN", "BLOCK_ACTIVATED", { blockId: nextBlock.id });
   } else {
     // All blocks completed
@@ -764,6 +726,10 @@ export function approveBlock(blockId: string): Block {
 // Getters
 export function getBlocks(transactionId: string): Block[] {
   return blocks.filter((b) => b.transactionId === transactionId).sort((a, b) => a.orderIndex - b.orderIndex);
+}
+
+export function getBlockById(blockId: string): Block | undefined {
+  return blocks.find((b) => b.id === blockId);
 }
 
 export function getApprovalPolicy(id: string): ApprovalPolicy | undefined {

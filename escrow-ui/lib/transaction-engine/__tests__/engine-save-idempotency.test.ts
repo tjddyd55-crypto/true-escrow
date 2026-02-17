@@ -1,6 +1,6 @@
 /**
- * Idempotency: create from template (2 workRules) → change date 10 times → workRules must still be 2.
- * Ensures replace-only save; no accumulation from PATCH/date change.
+ * Idempotency: workRules are deprecated and ignored by saveTransactionGraph.
+ * Date changes must not resurrect or accumulate workRules.
  */
 import { describe, it, expect, beforeAll } from "vitest";
 import { buildTransactionFromTemplateSpec } from "@/lib/build-transaction-from-spec";
@@ -25,13 +25,13 @@ const TWO_BLOCK_SPEC: TemplateSpec = {
   ],
 };
 
-describe("Engine save idempotency (no accumulation on date change)", () => {
+describe("Engine save idempotency (workRules ignored)", () => {
   beforeAll(() => {
     // Rely on TRANSACTION_ENGINE_DATA_FILE from vitest-setup so we don't touch real .data
     expect(process.env.TRANSACTION_ENGINE_DATA_FILE).toBeDefined();
   });
 
-  it("after 10 date changes, workRules count stays 2 (replace-only save)", () => {
+  it("after 10 date changes, workRules count stays 0", () => {
     const today = new Date().toISOString().slice(0, 10);
     const endDefault = addDays(today, 30);
 
@@ -52,7 +52,7 @@ describe("Engine save idempotency (no accumulation on date change)", () => {
       return blocks.reduce((sum, b) => sum + store.getWorkRules(b.id).length, 0);
     };
 
-    expect(getTotalWorkRules()).toBe(2);
+    expect(getTotalWorkRules()).toBe(0);
 
     for (let i = 0; i < 10; i++) {
       const transaction = store.getTransaction(id);
@@ -73,6 +73,6 @@ describe("Engine save idempotency (no accumulation on date change)", () => {
       store.saveTransactionGraph(updatedGraph);
     }
 
-    expect(getTotalWorkRules()).toBe(2);
+    expect(getTotalWorkRules()).toBe(0);
   });
 });

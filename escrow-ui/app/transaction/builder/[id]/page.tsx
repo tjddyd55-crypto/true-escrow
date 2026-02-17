@@ -9,13 +9,8 @@ import type {
   TransactionGraph,
   Transaction,
   Block,
-  ApprovalPolicy,
-  BlockApprover,
-  WorkRule,
-  WorkItem,
   ActivityLog,
   ApproverRole,
-  WorkRuleType,
   ApprovalPolicyType,
 } from "@/lib/transaction-engine/types";
 import { daysBetween } from "@/lib/transaction-engine/dateUtils";
@@ -29,10 +24,7 @@ export default function TransactionBuilderPage() {
   const [graph, setGraph] = useState<TransactionGraph | null>(null);
   const [logs, setLogs] = useState<ActivityLog[]>([]);
   const [loading, setLoading] = useState(true);
-  const [editingBlock, setEditingBlock] = useState<string | null>(null);
-  const [editingWorkRule, setEditingWorkRule] = useState<string | null>(null);
   const [localBlockTitles, setLocalBlockTitles] = useState<Record<string, string>>({});
-  const [localWorkRuleTitles, setLocalWorkRuleTitles] = useState<Record<string, string>>({});
   const [localTxTitle, setLocalTxTitle] = useState<string | undefined>(undefined);
   const [localTxDesc, setLocalTxDesc] = useState<string | undefined>(undefined);
   const [blockQuestionsByBlockId, setBlockQuestionsByBlockId] = useState<Record<string, BlockQuestion[]>>({});
@@ -40,7 +32,6 @@ export default function TransactionBuilderPage() {
   const { status: saveStatusTxTitle, triggerSave: triggerSaveTxTitle } = useAutoSave();
   const { status: saveStatusTxDesc, triggerSave: triggerSaveTxDesc } = useAutoSave();
   const { getStatus: getBlockSaveStatus, triggerSave: triggerSaveBlock } = useAutoSaveByKey();
-  const { getStatus: getWorkRuleSaveStatus, triggerSave: triggerSaveWorkRule } = useAutoSaveByKey();
   const [addApproverBlockId, setAddApproverBlockId] = useState<string | null>(null);
   const [addApproverRole, setAddApproverRole] = useState<ApproverRole>("VERIFIER");
   const [addApproverDisplayName, setAddApproverDisplayName] = useState("");
@@ -48,7 +39,6 @@ export default function TransactionBuilderPage() {
   const [dropTargetBlockId, setDropTargetBlockId] = useState<string | null>(null);
 
   const APPROVER_ROLES: ApproverRole[] = ["BUYER", "SELLER", "VERIFIER", "ADMIN"];
-  const WORK_RULE_TYPES: WorkRuleType[] = ["BLOG", "CUSTOM", "REVIEW", "SIGN_OFF", "DELIVERY", "DOCUMENT", "INSPECTION"];
 
   useEffect(() => {
     if (transactionId) {
@@ -214,69 +204,6 @@ export default function TransactionBuilderPage() {
       }
     } catch (error) {
       console.error("Failed to delete block:", error);
-    }
-  }
-
-  async function addWorkRule(blockId: string, workType: WorkRuleType = "CUSTOM") {
-    if (!graph || graph.transaction.status !== "DRAFT") return;
-
-    try {
-      const res = await fetch("/api/engine/workrules", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          blockId,
-          workType,
-          title: "",
-          quantity: 1,
-          frequency: "ONCE",
-          dueDates: [],
-        }),
-      });
-      if (res.ok) await fetchData();
-    } catch (error) {
-      console.error("Failed to add work rule:", error);
-    }
-  }
-
-  async function updateWorkRule(ruleId: string, patch: Partial<WorkRule>): Promise<void> {
-    if (!graph || graph.transaction.status !== "DRAFT") return;
-    if (ruleId == null || ruleId === "") {
-      console.warn("[Builder] updateWorkRule: ruleId is undefined or empty");
-      return;
-    }
-
-    const res = await fetch(`/api/engine/workrules/${ruleId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(patch),
-    });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.error || "Failed to update work rule");
-    }
-    await fetchData();
-  }
-
-  async function deleteWorkRule(workRuleId: string) {
-    if (!graph || graph.transaction.status !== "DRAFT") return;
-    if (workRuleId == null || workRuleId === "") {
-      console.warn("[Builder] deleteWorkRule: workRuleId is undefined or empty");
-      return;
-    }
-
-    try {
-      const res = await fetch(`/api/engine/workrules/${workRuleId}`, {
-        method: "DELETE",
-      });
-      if (res.ok) {
-        await fetchData();
-      } else {
-        const err = await res.json();
-        console.error("WorkRule delete failed:", err);
-      }
-    } catch (error) {
-      console.error("Failed to delete work rule:", error);
     }
   }
 
@@ -448,32 +375,6 @@ export default function TransactionBuilderPage() {
     }
   }
 
-  async function submitWorkItem(itemId: string) {
-    try {
-      const res = await fetch(`/api/engine/workitems/${itemId}/submit`, {
-        method: "POST",
-      });
-      if (res.ok) {
-        fetchData();
-      }
-    } catch (error) {
-      console.error("Failed to submit work item:", error);
-    }
-  }
-
-  async function approveWorkItem(itemId: string) {
-    try {
-      const res = await fetch(`/api/engine/workitems/${itemId}/approve`, {
-        method: "POST",
-      });
-      if (res.ok) {
-        fetchData();
-      }
-    } catch (error) {
-      console.error("Failed to approve work item:", error);
-    }
-  }
-
   async function approveBlock(blockId: string) {
     try {
       const res = await fetch(`/api/engine/blocks/${blockId}/approve`, {
@@ -587,12 +488,6 @@ export default function TransactionBuilderPage() {
     : "Not set";
 
   const activeBlock = graph.blocks.find((b) => b.isActive);
-  const activeBlockWorkItems = activeBlock
-    ? graph.workItems.filter((wi) => {
-        const rule = graph.workRules.find((r) => r.id === wi.workRuleId);
-        return rule && rule.blockId === activeBlock.id;
-      })
-    : [];
 
   return (
     <main style={{ padding: "40px 20px", maxWidth: 1400, margin: "0 auto" }}>
@@ -779,11 +674,10 @@ export default function TransactionBuilderPage() {
               {graph.blocks.map((block, blockIndex) => {
                 const policy = graph.approvalPolicies.find((p) => p.id === block.approvalPolicyId);
                 const approvers = graph.blockApprovers.filter((a) => a.blockId === block.id);
-                const rules = graph.workRules.filter((r) => r.blockId === block.id);
-                const blockItems = graph.workItems.filter((wi) => {
-                  const rule = graph.workRules.find((r) => r.id === wi.workRuleId);
-                  return rule && rule.blockId === block.id;
-                });
+                const readiness = blockReadinessByBlockId[block.id];
+                const canApproveByQuestions = readiness?.ready === true;
+                const approvalReason =
+                  readiness?.missingRequired?.[0]?.reason ?? "필수 질문 답변이 필요합니다.";
                 const blockColor = BLOCK_COLORS[blockIndex % BLOCK_COLORS.length];
 
                 return (
@@ -901,13 +795,13 @@ export default function TransactionBuilderPage() {
                           style={{
                             padding: "4px 12px",
                             borderRadius: 4,
-                            backgroundColor: blockReadinessByBlockId[block.id]?.ready ? "#16a34a" : "#b91c1c",
+                            backgroundColor: canApproveByQuestions ? "#16a34a" : "#b91c1c",
                             color: "white",
                             fontSize: "0.75rem",
                             fontWeight: "700",
                           }}
                         >
-                          {blockReadinessByBlockId[block.id]?.ready ? "READY" : "NOT READY"}
+                          {canApproveByQuestions ? "READY" : "NOT READY"}
                         </span>
                         <span
                           style={{
@@ -1163,219 +1057,25 @@ export default function TransactionBuilderPage() {
                       }}
                     />
 
-                    {/* Work Rules */}
-                    <div style={{ marginBottom: 15 }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-                        <h4 style={{ margin: 0, fontSize: "1rem" }}>{t.workRules}</h4>
-                        {isDraft && (
-                          <button
-                            onClick={() => addWorkRule(block.id)}
-                            style={{
-                              padding: "4px 8px",
-                              backgroundColor: "#6c5ce7",
-                              color: "white",
-                              border: "none",
-                              borderRadius: 4,
-                              cursor: "pointer",
-                              fontSize: "0.85rem",
-                            }}
-                          >
-                            {t.addRule}
-                          </button>
-                        )}
-                      </div>
-                      {rules.map((rule) => {
-                        const ruleWorkType = WORK_RULE_TYPES.includes(rule.workType as WorkRuleType) ? (rule.workType as WorkRuleType) : "CUSTOM";
-                        return (
-                        <div
-                          key={rule.id}
+                    {block.isActive && (
+                      <div style={{ marginTop: 15 }}>
+                        <button
+                          onClick={() => approveBlock(block.id)}
+                          disabled={!canApproveByQuestions}
+                          title={canApproveByQuestions ? "" : approvalReason}
                           style={{
-                            padding: 10,
-                            marginBottom: 8,
-                            border: "1px solid #e0e0e0",
+                            width: "100%",
+                            padding: "8px 16px",
+                            backgroundColor: canApproveByQuestions ? "#00b894" : "#9ca3af",
+                            color: "white",
+                            border: "none",
                             borderRadius: 4,
-                            backgroundColor: "#f8f9fa",
+                            cursor: canApproveByQuestions ? "pointer" : "not-allowed",
+                            fontWeight: "600",
                           }}
                         >
-                          {isDraft ? (
-                            <>
-                              <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 5, flexWrap: "wrap" }}>
-                                <label style={{ fontSize: "0.85rem", color: "#666", minWidth: 50 }}>{t.workType}:</label>
-                                <select
-                                  value={ruleWorkType}
-                                  onChange={(e) => updateWorkRule(rule.id, { workType: e.target.value as WorkRuleType })}
-                                  style={{ padding: 4, border: "1px solid #e0e0e0", borderRadius: 4, fontSize: "0.9rem" }}
-                                >
-                                  {WORK_RULE_TYPES.map((wt) => (
-                                    <option key={wt} value={wt}>{wt}</option>
-                                  ))}
-                                </select>
-                                <span style={{ fontSize: "0.85rem", color: "#666" }}>{t.workRuleTitle}:</span>
-                                <input
-                                  type="text"
-                                  value={localWorkRuleTitles[rule.id] ?? rule.title ?? ""}
-                                  onChange={(e) => setLocalWorkRuleTitles((prev) => ({ ...prev, [rule.id]: e.target.value }))}
-                                  onBlur={() => {
-                                    if (rule.id == null || rule.id === "") {
-                                      console.warn("[Builder] WorkRule title onBlur: rule.id is undefined or empty");
-                                      return;
-                                    }
-                                    const title = (localWorkRuleTitles[rule.id] ?? rule.title ?? "").trim();
-                                    setLocalWorkRuleTitles((prev) => {
-                                      const next = { ...prev };
-                                      delete next[rule.id];
-                                      return next;
-                                    });
-                                    if (title === (rule.title ?? "").trim()) return;
-                                    triggerSaveWorkRule(rule.id, async () => {
-                                      await updateWorkRule(rule.id, { title: title || undefined });
-                                    });
-                                  }}
-                                  placeholder={t.workRuleTitle}
-                                  style={{ flex: 1, minWidth: 120, padding: 4, border: "1px solid #e0e0e0", borderRadius: 4 }}
-                                />
-                                <SaveStatusIndicator status={getWorkRuleSaveStatus(rule.id)} />
-                              </div>
-                              <div style={{ display: "flex", gap: 10, marginBottom: 5 }}>
-                                <input
-                                  type="number"
-                                  value={rule.quantity}
-                                  onChange={(e) => updateWorkRule(rule.id, { quantity: parseInt(e.target.value) || 0 })}
-                                  onBlur={() => fetchData()}
-                                  placeholder={t.quantity}
-                                  style={{ width: 80, padding: 4, border: "1px solid #e0e0e0", borderRadius: 4 }}
-                                />
-                                <select
-                                  value={rule.frequency}
-                                  onChange={(e) => updateWorkRule(rule.id, { frequency: e.target.value as any })}
-                                  style={{ padding: 4, border: "1px solid #e0e0e0", borderRadius: 4 }}
-                                >
-                                  <option value="ONCE">{t.once}</option>
-                                  <option value="DAILY">{t.daily}</option>
-                                  <option value="WEEKLY">{t.weekly}</option>
-                                  <option value="CUSTOM">{t.custom}</option>
-                                </select>
-                              </div>
-                              <p style={{ margin: "4px 0 0", fontSize: "0.8rem", color: "#666" }}>{t.dueDatesDerivedFromBlock}</p>
-                              <button
-                                onClick={() => deleteWorkRule(rule.id)}
-                                type="button"
-                                style={{
-                                  marginTop: 5,
-                                  padding: "2px 6px",
-                                  backgroundColor: "#e74c3c",
-                                  color: "white",
-                                  border: "none",
-                                  borderRadius: 4,
-                                  cursor: "pointer",
-                                  fontSize: "0.8rem",
-                                }}
-                              >
-                                {t.delete}
-                              </button>
-                            </>
-                          ) : (
-                            <div>
-                              <div style={{ fontWeight: "600" }}>{rule.title || rule.workType}</div>
-                              <div style={{ fontSize: "0.85rem", color: "#666" }}>
-                                {rule.workType} · {t.quantity}: {rule.quantity} | {t.frequency}: {rule.frequency}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      ); })}
-                    </div>
-
-                    {/* Work Items (Active Block Only) */}
-                    {block.isActive && blockItems.length > 0 && (
-                      <div style={{ marginTop: 15, padding: 15, backgroundColor: "#fff5f5", borderRadius: 4 }}>
-                        <h4 style={{ margin: 0, marginBottom: 10, fontSize: "1rem" }}>{t.workItems}</h4>
-                        {blockItems.map((item) => {
-                          const rule = graph.workRules.find((r) => r.id === item.workRuleId);
-                          return (
-                            <div
-                              key={item.id}
-                              style={{
-                                padding: 10,
-                                marginBottom: 8,
-                                border: "1px solid #e0e0e0",
-                                borderRadius: 4,
-                                backgroundColor: "white",
-                              }}
-                            >
-                              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                                <div>
-                                  <div style={{ fontWeight: "600" }}>{rule?.workType || "Work"}</div>
-                                  <div style={{ fontSize: "0.85rem", color: "#666" }}>Due: Day {item.dueDay}</div>
-                                </div>
-                                <div style={{ display: "flex", gap: 5, alignItems: "center" }}>
-                                  <span
-                                    style={{
-                                      padding: "2px 8px",
-                                      borderRadius: 4,
-                                      backgroundColor:
-                                        item.status === "APPROVED" ? "#00b894" : item.status === "SUBMITTED" ? "#6c5ce7" : "#f39c12",
-                                      color: "white",
-                                      fontSize: "0.8rem",
-                                    }}
-                                  >
-                                    {item.status}
-                                  </span>
-                                  {item.status === "PENDING" && (
-                                    <button
-                                      onClick={() => submitWorkItem(item.id)}
-                                      style={{
-                                        padding: "4px 8px",
-                                        backgroundColor: "#6c5ce7",
-                                        color: "white",
-                                        border: "none",
-                                        borderRadius: 4,
-                                        cursor: "pointer",
-                                        fontSize: "0.8rem",
-                                      }}
-                                    >
-                                      {t.submit}
-                                    </button>
-                                  )}
-                                  {item.status === "SUBMITTED" && (
-                                    <button
-                                      onClick={() => approveWorkItem(item.id)}
-                                      style={{
-                                        padding: "4px 8px",
-                                        backgroundColor: "#00b894",
-                                        color: "white",
-                                        border: "none",
-                                        borderRadius: 4,
-                                        cursor: "pointer",
-                                        fontSize: "0.8rem",
-                                      }}
-                                    >
-                                      {t.approve}
-                                    </button>
-                                  )}
-                                </div>
-                              </div>
-                            </div>
-                          );
-                        })}
-                        {blockItems.every((i) => i.status === "APPROVED") && (
-                          <button
-                            onClick={() => approveBlock(block.id)}
-                            style={{
-                              marginTop: 10,
-                              width: "100%",
-                              padding: "8px 16px",
-                              backgroundColor: "#00b894",
-                              color: "white",
-                              border: "none",
-                              borderRadius: 4,
-                              cursor: "pointer",
-                              fontWeight: "600",
-                            }}
-                          >
-                            {t.approveBlock}
-                          </button>
-                        )}
+                          {t.approveBlock}
+                        </button>
                       </div>
                     )}
                   </div>
