@@ -5,6 +5,7 @@ export type ReadinessQuestion = {
   id: string;
   type: string;
   required: boolean;
+  allow_attachment?: boolean;
   options: unknown;
 };
 
@@ -24,7 +25,7 @@ export async function computeBlockReadiness(params: {
     if (!q.required) continue;
     const answer = await params.getAnswer(q.id);
     const options = normalizeQuestionOptions(q.options);
-    const hasAttachment = q.type === "FILE" ? await params.hasAttachment(q.id) : false;
+    const hasAttachment = q.allow_attachment || q.type === "FILE" ? await params.hasAttachment(q.id) : false;
     const result = validateAnswerByType(q.type, answer, options, { hasAttachment });
     if (!result.valid) {
       missingRequired.push({

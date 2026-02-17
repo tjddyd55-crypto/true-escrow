@@ -8,6 +8,7 @@ export type InMemoryQuestionRow = {
   label: string | null;
   description: string | null;
   required: boolean;
+  allow_attachment: boolean;
   options: unknown;
   created_at: string;
 };
@@ -38,6 +39,7 @@ export function createQuestion(input: {
   label: string;
   description: string | null;
   required: boolean;
+  allowAttachment: boolean;
   options: unknown;
 }): InMemoryQuestionRow {
   const orderIndex = listByBlockInternal(input.blockId).length;
@@ -49,6 +51,7 @@ export function createQuestion(input: {
     label: input.label,
     description: input.description,
     required: input.required,
+    allow_attachment: input.allowAttachment,
     options: input.options,
     created_at: new Date().toISOString(),
   };
@@ -62,7 +65,7 @@ export function getQuestion(questionId: string): InMemoryQuestionRow | null {
 
 export function updateQuestion(
   questionId: string,
-  patch: Partial<Pick<InMemoryQuestionRow, "type" | "label" | "description" | "required" | "options">>
+  patch: Partial<Pick<InMemoryQuestionRow, "type" | "label" | "description" | "required" | "allow_attachment" | "options">>
 ): InMemoryQuestionRow | null {
   const existing = questionsById.get(questionId);
   if (!existing) return null;

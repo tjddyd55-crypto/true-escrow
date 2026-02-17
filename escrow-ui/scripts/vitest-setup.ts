@@ -12,6 +12,6 @@ if (fs.existsSync(testDataFile)) {
     fs.unlinkSync(testDataFile);
   } catch (e: unknown) {
     const code = (e as { code?: string }).code;
-    if (code !== "ENOENT") throw e;
+    if (code !== "ENOENT" && code !== "EPERM" && code !== "EACCES") throw e;
   }
 }

@@ -12,6 +12,7 @@ type QuestionRow = {
   label: string | null;
   description: string | null;
   required: boolean;
+  allow_attachment?: boolean;
   options: unknown;
   order_index: number;
 };
@@ -90,7 +91,7 @@ export async function POST(request: NextRequest) {
     if (isDatabaseConfigured()) {
       const questionRows = (
         await query<QuestionRow>(
-          `SELECT block_id, type, label, description, required, options, order_index
+          `SELECT block_id, type, label, description, required, COALESCE(allow_attachment, false) AS allow_attachment, options, order_index
            FROM escrow_block_questions
            WHERE block_id = ANY($1::uuid[])
            ORDER BY block_id ASC, order_index ASC`,
@@ -104,6 +105,7 @@ export async function POST(request: NextRequest) {
           label: q.label || "Untitled question",
           description: q.description,
           required: q.required,
+          allowAttachment: Boolean(q.allow_attachment),
           options: q.options,
         });
       });
@@ -114,6 +116,7 @@ export async function POST(request: NextRequest) {
           label: q.label || "Untitled question",
           description: q.description,
           required: q.required,
+          allowAttachment: Boolean(q.allow_attachment),
           options: q.options,
         }));
       });

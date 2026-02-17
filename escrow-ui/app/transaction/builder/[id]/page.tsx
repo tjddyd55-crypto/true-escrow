@@ -36,7 +36,6 @@ export default function TransactionBuilderPage() {
   const [localTxTitle, setLocalTxTitle] = useState<string | undefined>(undefined);
   const [localTxDesc, setLocalTxDesc] = useState<string | undefined>(undefined);
   const [blockQuestionsByBlockId, setBlockQuestionsByBlockId] = useState<Record<string, BlockQuestion[]>>({});
-  const [attachmentMetaByQuestionId, setAttachmentMetaByQuestionId] = useState<Record<string, Array<{ id: string; fileName: string; status: string }>>>({});
   const [blockReadinessByBlockId, setBlockReadinessByBlockId] = useState<Record<string, { ready: boolean; missingRequired: Array<{ questionId: string; reason: string }> }>>({});
   const { status: saveStatusTxTitle, triggerSave: triggerSaveTxTitle } = useAutoSave();
   const { status: saveStatusTxDesc, triggerSave: triggerSaveTxDesc } = useAutoSave();
@@ -287,7 +286,7 @@ export default function TransactionBuilderPage() {
       const res = await fetch(`/api/engine/blocks/${blockId}/questions`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type: "SHORT_TEXT", label: "Untitled question", required: false }),
+        body: JSON.stringify({ type: "SHORT_TEXT", label: "Untitled question", required: false, allowAttachment: false }),
       });
       if (res.ok) {
         const json = await res.json();
@@ -352,39 +351,6 @@ export default function TransactionBuilderPage() {
     }
   }
 
-  async function createAttachmentMetadata(args: { blockId: string; questionId: string; file: File }) {
-    try {
-      const res = await fetch(`/api/engine/trades/${transactionId}/blocks/${args.blockId}/attachments`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          uploaderRole: "SELLER",
-          questionId: args.questionId,
-          fileName: args.file.name,
-          mime: args.file.type || "application/octet-stream",
-          size: args.file.size,
-        }),
-      });
-      const json = await res.json().catch(() => ({}));
-      if (res.ok && json.ok && json.data?.id) {
-        setAttachmentMetaByQuestionId((prev) => ({
-          ...prev,
-          [args.questionId]: [
-            ...(prev[args.questionId] ?? []),
-            {
-              id: json.data.id,
-              fileName: args.file.name,
-              status: "PENDING",
-            },
-          ],
-        }));
-        await fetchBlockReadiness(args.blockId);
-      }
-    } catch (e) {
-      console.error("Failed to create attachment metadata:", e);
-    }
-  }
-
   async function duplicateQuestion(blockId: string, source: BlockQuestion) {
     try {
       const created = await fetch(`/api/engine/blocks/${blockId}/questions`, {
@@ -395,6 +361,7 @@ export default function TransactionBuilderPage() {
           label: source.label || "Untitled question",
           description: source.description,
           required: source.required,
+          allowAttachment: Boolean(source.allow_attachment),
           options: source.options ?? {},
         }),
       });
@@ -1182,8 +1149,6 @@ export default function TransactionBuilderPage() {
                       onDeleteQuestion={deleteQuestion}
                       onReorderQuestions={reorderQuestions}
                       onDuplicateQuestion={duplicateQuestion}
-                      attachmentsByQuestionId={attachmentMetaByQuestionId}
-                      onCreateAttachmentMetadata={createAttachmentMetadata}
                       t={{
                         blockQuestions: t.blockQuestions,
                         addQuestion: t.addQuestion,

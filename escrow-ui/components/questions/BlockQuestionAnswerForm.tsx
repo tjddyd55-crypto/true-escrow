@@ -11,6 +11,8 @@ type BlockQuestion = {
   label: string | null;
   description: string | null;
   required: boolean;
+  allowAttachment?: boolean;
+  allow_attachment?: boolean;
   options?: unknown;
 };
 
@@ -135,12 +137,20 @@ export function BlockQuestionAnswerForm(props: {
                 </div>
                 {q.description ? <div style={{ fontSize: "0.85rem", color: "#666", marginTop: 4 }}>{q.description}</div> : null}
                 <div style={{ marginTop: 8 }}>
-                  {(q.type === "SHORT_TEXT" || q.type === "LONG_TEXT") && (
+                  {q.type === "SHORT_TEXT" && (
                     <input
                       type="text"
                       value={typeof answers[q.id] === "string" ? (answers[q.id] as string) : ""}
                       onChange={(e) => setAnswer(q.id, e.target.value)}
                       style={{ width: "100%", padding: 8, border: "1px solid #d1d5db", borderRadius: 6 }}
+                    />
+                  )}
+                  {q.type === "LONG_TEXT" && (
+                    <textarea
+                      value={typeof answers[q.id] === "string" ? (answers[q.id] as string) : ""}
+                      onChange={(e) => setAnswer(q.id, e.target.value)}
+                      rows={4}
+                      style={{ width: "100%", padding: 8, border: "1px solid #d1d5db", borderRadius: 6, resize: "vertical" }}
                     />
                   )}
 
@@ -238,7 +248,7 @@ export function BlockQuestionAnswerForm(props: {
                     </div>
                   )}
 
-                  {q.type === "FILE" && (
+                  {Boolean(q.allowAttachment || q.allow_attachment || q.type === "FILE") && (
                     <div style={{ display: "grid", gap: 8 }}>
                       <input
                         type="file"

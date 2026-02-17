@@ -6,7 +6,7 @@ import * as inMemoryQuestionStore from "@/lib/block-questions/inMemoryQuestionSt
 import * as inMemoryAnswerStore from "@/lib/block-questions/inMemoryAnswerStore";
 import { normalizeQuestionOptions } from "@/lib/block-questions/options";
 
-type QuestionRow = { id: string; type: string; required: boolean; options: unknown };
+type QuestionRow = { id: string; type: string; required: boolean; options: unknown; allow_attachment?: boolean };
 
 export async function POST(
   request: NextRequest,
@@ -49,7 +49,7 @@ export async function POST(
     const questions: QuestionRow[] = isDatabaseConfigured()
       ? (
           await query<QuestionRow>(
-            "SELECT id, type, required, options FROM escrow_block_questions WHERE block_id = $1",
+            "SELECT id, type, required, options, COALESCE(allow_attachment, false) AS allow_attachment FROM escrow_block_questions WHERE block_id = $1",
             [blockId]
           )
         ).rows
@@ -58,6 +58,7 @@ export async function POST(
           type: q.type,
           required: q.required,
           options: q.options,
+          allow_attachment: Boolean(q.allow_attachment),
         }));
     const answerByQ = new Map(answers.map((a) => [a.questionId, a.answer]));
     const optionsByQ = new Map(questions.map((q) => [q.id, normalizeQuestionOptions(q.options)]));
@@ -66,22 +67,23 @@ export async function POST(
       if (!q.required) continue;
       const value = answerByQ.get(q.id);
       const opts = optionsByQ.get(q.id);
-      let hasAttachment = false;
-      if (q.type === "FILE") {
-        if (isDatabaseConfigured()) {
-          const attachmentCount = await query<{ c: string }>(
-            `SELECT count(*)::text AS c
-             FROM escrow_block_attachments
-             WHERE trade_id = $1
-               AND block_id = $2
-               AND (question_id = $3 OR question_id IS NULL)`,
-            [tradeId, blockId, q.id]
-          );
-          hasAttachment = Number(attachmentCount.rows[0]?.c ?? "0") > 0;
-        } else {
-          hasAttachment = inMemoryAnswerStore.hasAttachmentForRequiredFile(tradeId, blockId, q.id);
-        }
-      }
+      const attachmentEnabled = Boolean(q.allow_attachment || q.type === "FILE");
+      const hasAttachment = attachmentEnabled
+        ? isDatabaseConfigured()
+          ? Number(
+              (
+                await query<{ c: string }>(
+                  `SELECT count(*)::text AS c
+                   FROM escrow_block_attachments
+                   WHERE trade_id = $1
+                     AND block_id = $2
+                     AND (question_id = $3 OR question_id IS NULL)`,
+                  [tradeId, blockId, q.id]
+                )
+              ).rows[0]?.c ?? "0"
+            ) > 0
+          : inMemoryAnswerStore.hasAttachmentForRequiredFile(tradeId, blockId, q.id)
+        : false;
       const result = validateAnswerByType(q.type, value, opts, { hasAttachment });
       if (!result.valid) {
         return NextResponse.json(
@@ -96,21 +98,21 @@ export async function POST(
       const q = questions.find((x) => x.id === a.questionId);
       if (!q) continue;
       const opts = optionsByQ.get(q.id);
-      const hasAttachment =
-        q.type === "FILE"
-          ? isDatabaseConfigured()
-            ? (
-                await query<{ c: string }>(
-                  `SELECT count(*)::text AS c
-                   FROM escrow_block_attachments
-                   WHERE trade_id = $1
-                     AND block_id = $2
-                     AND (question_id = $3 OR question_id IS NULL)`,
-                  [tradeId, blockId, q.id]
-                )
-              ).rows[0]?.c !== "0"
-            : inMemoryAnswerStore.hasAttachmentForRequiredFile(tradeId, blockId, q.id)
-          : false;
+      const attachmentEnabled = Boolean(q.allow_attachment || q.type === "FILE");
+      const hasAttachment = attachmentEnabled
+        ? isDatabaseConfigured()
+          ? (
+              await query<{ c: string }>(
+                `SELECT count(*)::text AS c
+                 FROM escrow_block_attachments
+                 WHERE trade_id = $1
+                   AND block_id = $2
+                   AND (question_id = $3 OR question_id IS NULL)`,
+                [tradeId, blockId, q.id]
+              )
+            ).rows[0]?.c !== "0"
+          : inMemoryAnswerStore.hasAttachmentForRequiredFile(tradeId, blockId, q.id)
+        : false;
       const result = validateAnswerByType(q.type, a.answer, opts, { hasAttachment });
       if (!result.valid) continue;
       if (isDatabaseConfigured()) {

@@ -6,6 +6,7 @@ export type SnapshotQuestion = {
   label: string;
   description: string | null;
   required: boolean;
+  allowAttachment?: boolean;
   options: unknown;
 };
 

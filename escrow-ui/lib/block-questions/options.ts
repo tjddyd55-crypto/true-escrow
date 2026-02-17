@@ -1,4 +1,4 @@
-export type ChoiceOption = { value: string; label: string };
+export type ChoiceOption = { id?: string; value: string; label: string };
 export type GridSingleOption = { rows: string[]; columns: string[] };
 export type NumberOption = { min?: number; max?: number };
 export type QuestionOptions = {
@@ -34,12 +34,14 @@ export function normalizeQuestionOptions(input: unknown): QuestionOptions {
           const choiceObj = c as Record<string, unknown>;
           const rawValue = choiceObj.value;
           const rawLabel = choiceObj.label;
+          const rawId = choiceObj.id;
           const value = typeof rawValue === "string" ? rawValue.trim() : "";
           const label = typeof rawLabel === "string" ? rawLabel.trim() : value;
+          const id = typeof rawId === "string" && rawId.trim() ? rawId.trim() : undefined;
           if (!value) return null;
-          return { value, label: label || value };
+          return { id, value, label: label || value };
         })
-        .filter((c): c is ChoiceOption => c !== null)
+        .filter((c) => c !== null) as ChoiceOption[]
     : [];
 
   const rows = Array.isArray(obj.rows)

@@ -68,6 +68,7 @@ export function validateAnswerByType(
       }
       return { valid: true };
     }
+    // Legacy compatibility for previously persisted FILE-type questions.
     case "FILE":
       return ctx?.hasAttachment ? { valid: true } : { valid: false, error: "File attachment is required" };
     case "NUMBER": {

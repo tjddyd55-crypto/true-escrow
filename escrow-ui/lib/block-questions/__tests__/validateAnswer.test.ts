@@ -59,7 +59,7 @@ describe("validateAnswerByType", () => {
   it("NUMBER: numeric string valid", () => {
     expect(validateAnswerByType("NUMBER", "42")).toEqual({ valid: true });
   });
-  it("FILE: requires attachment for required check", () => {
+  it("FILE(legacy): requires attachment", () => {
     expect(validateAnswerByType("FILE", null)).toEqual({ valid: false, error: "File attachment is required" });
     expect(validateAnswerByType("FILE", null, undefined, { hasAttachment: true })).toEqual({ valid: true });
   });

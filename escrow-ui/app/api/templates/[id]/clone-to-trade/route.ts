@@ -127,9 +127,9 @@ export async function POST(
           const q = questions[i];
           await query(
             `INSERT INTO escrow_block_questions
-             (block_id, order_index, type, label, description, required, options)
-             VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-            [block.id, i, q.type, q.label || "Untitled question", q.description, Boolean(q.required), q.options ?? {}]
+             (block_id, order_index, type, label, description, required, allow_attachment, options)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+            [block.id, i, q.type, q.label || "Untitled question", q.description, Boolean(q.required), Boolean(q.allowAttachment), q.options ?? {}]
           );
         }
       } else {
@@ -140,6 +140,7 @@ export async function POST(
             label: q.label || "Untitled question",
             description: q.description ?? null,
             required: Boolean(q.required),
+            allowAttachment: Boolean(q.allowAttachment),
             options: q.options ?? {},
           });
         });

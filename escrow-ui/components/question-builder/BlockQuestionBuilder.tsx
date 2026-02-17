@@ -11,6 +11,8 @@ export type BlockQuestion = {
   label: string | null;
   description: string | null;
   required: boolean;
+  allowAttachment?: boolean;
+  allow_attachment?: boolean;
   options?: unknown;
   created_at?: string;
 };
@@ -22,7 +24,6 @@ const QUESTION_TYPES = [
   "DROPDOWN",
   "RADIO",
   "DATE",
-  "FILE",
   "NUMBER",
   "GRID_SINGLE",
 ] as const;
@@ -40,8 +41,6 @@ export function BlockQuestionBuilder(props: {
   onDeleteQuestion: (questionId: string, blockId: string) => Promise<void>;
   onReorderQuestions: (blockId: string, orderedQuestionIds: string[]) => Promise<void>;
   onDuplicateQuestion: (blockId: string, source: BlockQuestion) => Promise<void>;
-  attachmentsByQuestionId: Record<string, Array<{ id: string; fileName: string; status: string }>>;
-  onCreateAttachmentMetadata: (args: { blockId: string; questionId: string; file: File }) => Promise<void>;
   t: {
     blockQuestions: string;
     addQuestion: string;
@@ -58,7 +57,6 @@ export function BlockQuestionBuilder(props: {
   const { blockId, isDraft, questions, onAddQuestion, onUpdateQuestion, onDeleteQuestion, onReorderQuestions, onDuplicateQuestion, t } =
     props;
   const [draggingQuestionId, setDraggingQuestionId] = useState<string | null>(null);
-  const [selectedFileByQuestionId, setSelectedFileByQuestionId] = useState<Record<string, File | null>>({});
 
   const list = useMemo(() => [...questions].sort((a, b) => a.order_index - b.order_index), [questions]);
 
@@ -73,6 +71,10 @@ export function BlockQuestionBuilder(props: {
     await onReorderQuestions(blockId, next.map((q) => q.id));
   }
 
+  function updateChoiceOptions(q: BlockQuestion, nextChoices: ChoiceOption[]) {
+    onUpdateQuestion(q.id, { options: { choices: nextChoices } });
+  }
+
   function renderChoiceEditor(q: BlockQuestion) {
     const choices = asChoiceList(q.options);
     return (
@@ -84,30 +86,114 @@ export function BlockQuestionBuilder(props: {
               type="text"
               value={choice.label}
               onChange={(e) => {
-                const next = choices.map((c, i) => (i === index ? { value: c.value || e.target.value, label: e.target.value } : c));
-                onUpdateQuestion(q.id, { options: { choices: next } });
+                const next = choices.map((c, i) =>
+                  i === index ? { id: c.id, value: c.value || e.target.value, label: e.target.value } : c
+                );
+                updateChoiceOptions(q, next);
               }}
               placeholder={`Choice ${index + 1}`}
               style={{ flex: 1, padding: 6, border: "1px solid #e0e0e0", borderRadius: 4 }}
             />
             <button
               type="button"
-              onClick={() => onUpdateQuestion(q.id, { options: { choices: choices.filter((_, i) => i !== index) } })}
+              onClick={() => updateChoiceOptions(q, choices.filter((_, i) => i !== index))}
               style={{ padding: "4px 8px", fontSize: "0.8rem" }}
             >
               -
+            </button>
+            <button
+              type="button"
+              disabled={index === 0}
+              onClick={() => {
+                if (index === 0) return;
+                const next = [...choices];
+                [next[index - 1], next[index]] = [next[index], next[index - 1]];
+                updateChoiceOptions(q, next);
+              }}
+              style={{ padding: "4px 8px", fontSize: "0.8rem" }}
+            >
+              ↑
+            </button>
+            <button
+              type="button"
+              disabled={index === choices.length - 1}
+              onClick={() => {
+                if (index === choices.length - 1) return;
+                const next = [...choices];
+                [next[index], next[index + 1]] = [next[index + 1], next[index]];
+                updateChoiceOptions(q, next);
+              }}
+              style={{ padding: "4px 8px", fontSize: "0.8rem" }}
+            >
+              ↓
             </button>
           </div>
         ))}
         <button
           type="button"
           onClick={() => {
-            const next = [...choices, { value: `choice_${choices.length + 1}`, label: `Option ${choices.length + 1}` }];
-            onUpdateQuestion(q.id, { options: { choices: next } });
+            const idx = choices.length + 1;
+            const next = [...choices, { id: `choice_${idx}`, value: `choice_${idx}`, label: `Option ${idx}` }];
+            updateChoiceOptions(q, next);
           }}
           style={{ padding: "4px 8px", fontSize: "0.8rem" }}
         >
           + {t.options}
+        </button>
+      </div>
+    );
+  }
+
+  function renderGridListEditor(args: {
+    label: string;
+    values: string[];
+    onChange: (values: string[]) => void;
+  }) {
+    const { label, values, onChange } = args;
+    return (
+      <div style={{ display: "grid", gap: 6 }}>
+        <div style={{ fontSize: "0.8rem", color: "#555" }}>{label}</div>
+        {values.map((value, idx) => (
+          <div key={`${label}-${idx}`} style={{ display: "flex", gap: 6 }}>
+            <input
+              type="text"
+              value={value}
+              onChange={(e) => onChange(values.map((v, i) => (i === idx ? e.target.value : v)))}
+              style={{ flex: 1, padding: 6, border: "1px solid #e0e0e0", borderRadius: 4 }}
+            />
+            <button type="button" onClick={() => onChange(values.filter((_, i) => i !== idx))} style={{ padding: "4px 8px", fontSize: "0.8rem" }}>
+              -
+            </button>
+            <button
+              type="button"
+              disabled={idx === 0}
+              onClick={() => {
+                if (idx === 0) return;
+                const next = [...values];
+                [next[idx - 1], next[idx]] = [next[idx], next[idx - 1]];
+                onChange(next);
+              }}
+              style={{ padding: "4px 8px", fontSize: "0.8rem" }}
+            >
+              ↑
+            </button>
+            <button
+              type="button"
+              disabled={idx === values.length - 1}
+              onClick={() => {
+                if (idx === values.length - 1) return;
+                const next = [...values];
+                [next[idx], next[idx + 1]] = [next[idx + 1], next[idx]];
+                onChange(next);
+              }}
+              style={{ padding: "4px 8px", fontSize: "0.8rem" }}
+            >
+              ↓
+            </button>
+          </div>
+        ))}
+        <button type="button" onClick={() => onChange([...values, ""]) } style={{ padding: "4px 8px", fontSize: "0.8rem", width: "fit-content" }}>
+          + Add
         </button>
       </div>
     );
@@ -118,47 +204,17 @@ export function BlockQuestionBuilder(props: {
     const rows = opts.grid?.rows ?? [];
     const columns = opts.grid?.columns ?? [];
     return (
-      <div style={{ marginTop: 8, display: "grid", gap: 6 }}>
-        <label style={{ fontSize: "0.8rem", color: "#555" }}>
-          Rows
-          <input
-            type="text"
-            value={rows.join(", ")}
-            onChange={(e) =>
-              onUpdateQuestion(q.id, {
-                options: {
-                  rows: e.target.value
-                    .split(",")
-                    .map((v) => v.trim())
-                    .filter(Boolean),
-                  columns,
-                },
-              })
-            }
-            placeholder="품질, 속도, 친절도"
-            style={{ width: "100%", padding: 6, marginTop: 4, border: "1px solid #e0e0e0", borderRadius: 4 }}
-          />
-        </label>
-        <label style={{ fontSize: "0.8rem", color: "#555" }}>
-          Columns
-          <input
-            type="text"
-            value={columns.join(", ")}
-            onChange={(e) =>
-              onUpdateQuestion(q.id, {
-                options: {
-                  rows,
-                  columns: e.target.value
-                    .split(",")
-                    .map((v) => v.trim())
-                    .filter(Boolean),
-                },
-              })
-            }
-            placeholder="좋음, 보통, 나쁨"
-            style={{ width: "100%", padding: 6, marginTop: 4, border: "1px solid #e0e0e0", borderRadius: 4 }}
-          />
-        </label>
+      <div style={{ marginTop: 8, display: "grid", gap: 8 }}>
+        {renderGridListEditor({
+          label: "Rows",
+          values: rows,
+          onChange: (nextRows) => onUpdateQuestion(q.id, { options: { rows: nextRows, columns } }),
+        })}
+        {renderGridListEditor({
+          label: "Columns",
+          values: columns,
+          onChange: (nextColumns) => onUpdateQuestion(q.id, { options: { rows, columns: nextColumns } }),
+        })}
       </div>
     );
   }
@@ -189,6 +245,26 @@ export function BlockQuestionBuilder(props: {
         />
       </div>
     );
+  }
+
+  function renderTypeSpecificEditor(q: BlockQuestion) {
+    switch (q.type) {
+      case "SHORT_TEXT":
+      case "LONG_TEXT":
+        return null;
+      case "CHECKBOX":
+      case "RADIO":
+      case "DROPDOWN":
+        return renderChoiceEditor(q);
+      case "NUMBER":
+        return renderNumberEditor(q);
+      case "DATE":
+        return <p style={{ margin: "4px 0 0", fontSize: "0.8rem", color: "#666" }}>{t.datePickerNote}</p>;
+      case "GRID_SINGLE":
+        return renderGridEditor(q);
+      default:
+        return null;
+    }
   }
 
   return (
@@ -247,6 +323,14 @@ export function BlockQuestionBuilder(props: {
                   <input type="checkbox" checked={q.required} onChange={(e) => onUpdateQuestion(q.id, { required: e.target.checked })} />
                   {t.required}
                 </label>
+                <label style={{ fontSize: "0.85rem", display: "flex", alignItems: "center", gap: 4 }}>
+                  <input
+                    type="checkbox"
+                    checked={Boolean(q.allowAttachment ?? q.allow_attachment)}
+                    onChange={(e) => onUpdateQuestion(q.id, { allowAttachment: e.target.checked, allow_attachment: e.target.checked })}
+                  />
+                  Allow file/photo upload
+                </label>
               </div>
               <input
                 type="text"
@@ -262,47 +346,7 @@ export function BlockQuestionBuilder(props: {
                 placeholder={t.questionDescription}
                 style={{ width: "100%", padding: 6, marginBottom: 4, border: "1px solid #e0e0e0", borderRadius: 4, fontSize: "0.9rem" }}
               />
-              {(q.type === "CHECKBOX" || q.type === "DROPDOWN" || q.type === "RADIO") && renderChoiceEditor(q)}
-              {q.type === "GRID_SINGLE" && renderGridEditor(q)}
-              {q.type === "NUMBER" && renderNumberEditor(q)}
-              {q.type === "DATE" && <p style={{ margin: "4px 0 0", fontSize: "0.8rem", color: "#666" }}>{t.datePickerNote}</p>}
-              {q.type === "FILE" && (
-                <div style={{ marginTop: 8 }}>
-                  <p style={{ margin: "4px 0 6px", fontSize: "0.8rem", color: "#666" }}>{t.fileUploadPlaceholder}</p>
-                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                    <input
-                      type="file"
-                      onChange={(e) =>
-                        setSelectedFileByQuestionId((prev) => ({
-                          ...prev,
-                          [q.id]: e.target.files?.[0] ?? null,
-                        }))
-                      }
-                    />
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        const file = selectedFileByQuestionId[q.id];
-                        if (!file) return;
-                        await props.onCreateAttachmentMetadata({ blockId, questionId: q.id, file });
-                        setSelectedFileByQuestionId((prev) => ({ ...prev, [q.id]: null }));
-                      }}
-                      style={{ padding: "4px 8px", fontSize: "0.8rem" }}
-                    >
-                      Upload metadata
-                    </button>
-                  </div>
-                  {(props.attachmentsByQuestionId[q.id] ?? []).length > 0 && (
-                    <div style={{ marginTop: 8, display: "grid", gap: 4 }}>
-                      {(props.attachmentsByQuestionId[q.id] ?? []).map((a) => (
-                        <div key={a.id} style={{ fontSize: "0.8rem", color: "#555" }}>
-                          {a.fileName} · {a.status}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
+              {renderTypeSpecificEditor(q)}
               <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
                 <button
                   type="button"

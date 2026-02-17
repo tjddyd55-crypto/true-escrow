@@ -27,7 +27,7 @@ export async function GET(
     const questions: ReadinessQuestion[] = isDatabaseConfigured()
       ? (
           await query<ReadinessQuestion>(
-            `SELECT id, type, required, options
+            `SELECT id, type, required, COALESCE(allow_attachment, false) AS allow_attachment, options
              FROM escrow_block_questions
              WHERE block_id = $1
              ORDER BY order_index ASC`,
@@ -38,6 +38,7 @@ export async function GET(
           id: q.id,
           type: q.type,
           required: q.required,
+          allow_attachment: Boolean(q.allow_attachment),
           options: q.options,
         }));
 

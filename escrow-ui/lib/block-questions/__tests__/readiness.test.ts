@@ -2,11 +2,10 @@ import { describe, it, expect } from "vitest";
 import { computeBlockReadiness } from "../readiness";
 
 describe("computeBlockReadiness", () => {
-  it("returns missing required checkbox/date/file", async () => {
+  it("returns missing required checkbox/date", async () => {
     const questions = [
       { id: "q1", type: "CHECKBOX", required: true, options: { choices: [{ value: "A", label: "A" }] } },
       { id: "q2", type: "DATE", required: true, options: {} },
-      { id: "q3", type: "FILE", required: true, options: {} },
     ];
     const answers: Record<string, unknown> = {
       q1: [],
@@ -18,14 +17,13 @@ describe("computeBlockReadiness", () => {
       hasAttachment: async () => false,
     });
     expect(result.ready).toBe(false);
-    expect(result.missingRequired.map((x) => x.questionId)).toEqual(["q1", "q2", "q3"]);
+    expect(result.missingRequired.map((x) => x.questionId)).toEqual(["q1", "q2"]);
   });
 
   it("returns ready when required questions are satisfied", async () => {
     const questions = [
       { id: "q1", type: "CHECKBOX", required: true, options: { choices: [{ value: "A", label: "A" }] } },
       { id: "q2", type: "DATE", required: true, options: {} },
-      { id: "q3", type: "FILE", required: true, options: {} },
     ];
     const answers: Record<string, unknown> = {
       q1: ["A"],

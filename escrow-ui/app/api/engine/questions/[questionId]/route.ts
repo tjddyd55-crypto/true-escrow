@@ -10,6 +10,7 @@ type QuestionRow = {
   label: string | null;
   description: string | null;
   required: boolean;
+  allow_attachment?: boolean;
   options: unknown;
   created_at: string;
 };
@@ -35,9 +36,22 @@ export async function PATCH(
         label: body.label as string | null | undefined,
         description: body.description as string | null | undefined,
         required: body.required !== undefined ? Boolean(body.required) : undefined,
+        allow_attachment:
+          body.allowAttachment !== undefined || body.allow_attachment !== undefined
+            ? Boolean(body.allowAttachment ?? body.allow_attachment)
+            : undefined,
         options: body.options,
       });
-      return NextResponse.json({ ok: true, data: updated });
+      return NextResponse.json({
+        ok: true,
+        data: updated
+          ? {
+              ...updated,
+              allowAttachment: Boolean(updated.allow_attachment),
+              allow_attachment: Boolean(updated.allow_attachment),
+            }
+          : updated,
+      });
     }
 
     const updates: string[] = [];
@@ -59,29 +73,47 @@ export async function PATCH(
       updates.push(`required = $${i++}`);
       values.push(Boolean(body.required));
     }
+    if (body.allowAttachment !== undefined || body.allow_attachment !== undefined) {
+      updates.push(`allow_attachment = $${i++}`);
+      values.push(Boolean(body.allowAttachment ?? body.allow_attachment));
+    }
     if (body.options !== undefined) {
       updates.push(`options = $${i++}`);
       values.push(body.options);
     }
     if (updates.length === 0) {
       const { rows } = await query<QuestionRow>(
-        "SELECT id, block_id, order_index, type, label, description, required, options, created_at FROM escrow_block_questions WHERE id = $1",
+        "SELECT id, block_id, order_index, type, label, description, required, COALESCE(allow_attachment, false) AS allow_attachment, options, created_at FROM escrow_block_questions WHERE id = $1",
         [questionId]
       );
       if (rows.length === 0) {
         return NextResponse.json({ ok: false, error: "Question not found" }, { status: 404 });
       }
-      return NextResponse.json({ ok: true, data: rows[0] });
+      return NextResponse.json({
+        ok: true,
+        data: {
+          ...rows[0],
+          allowAttachment: Boolean(rows[0].allow_attachment),
+          allow_attachment: Boolean(rows[0].allow_attachment),
+        },
+      });
     }
     values.push(questionId);
     const { rows } = await query<QuestionRow>(
-      `UPDATE escrow_block_questions SET ${updates.join(", ")} WHERE id = $${i} RETURNING id, block_id, order_index, type, label, description, required, options, created_at`,
+      `UPDATE escrow_block_questions SET ${updates.join(", ")} WHERE id = $${i} RETURNING id, block_id, order_index, type, label, description, required, COALESCE(allow_attachment, false) AS allow_attachment, options, created_at`,
       values
     );
     if (rows.length === 0) {
       return NextResponse.json({ ok: false, error: "Question not found" }, { status: 404 });
     }
-    return NextResponse.json({ ok: true, data: rows[0] });
+    return NextResponse.json({
+      ok: true,
+      data: {
+        ...rows[0],
+        allowAttachment: Boolean(rows[0].allow_attachment),
+        allow_attachment: Boolean(rows[0].allow_attachment),
+      },
+    });
   } catch (e: unknown) {
     const message = e instanceof Error ? e.message : "Failed to update question";
     return NextResponse.json({ ok: false, error: message }, { status: 500 });

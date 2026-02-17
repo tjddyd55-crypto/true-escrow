@@ -10,6 +10,7 @@ type QuestionRow = {
   label: string;
   description: string | null;
   required: boolean;
+  allow_attachment?: boolean;
   options: unknown;
   created_at: string;
 };
@@ -32,7 +33,7 @@ export async function GET(
       ? (
           await query<QuestionRow>(
             `
-            SELECT id, block_id, order_index, type, label, description, required, options, created_at
+            SELECT id, block_id, order_index, type, label, description, required, COALESCE(allow_attachment, false) AS allow_attachment, options, created_at
             FROM escrow_block_questions
             WHERE block_id = $1
             ORDER BY order_index ASC
@@ -42,7 +43,14 @@ export async function GET(
         ).rows
       : inMemoryQuestionStore.listQuestions(blockId);
 
-    return NextResponse.json({ ok: true, data: rows });
+    return NextResponse.json({
+      ok: true,
+      data: rows.map((row) => ({
+        ...row,
+        allowAttachment: Boolean(row.allow_attachment),
+        allow_attachment: Boolean(row.allow_attachment),
+      })),
+    });
   } catch (e: unknown) {
     const message =
       e instanceof Error ? e.message : "Failed to list questions";
@@ -74,6 +82,7 @@ export async function POST(
         : "Untitled question";
     const description = body.description ?? null;
     const required = Boolean(body.required);
+    const allowAttachment = Boolean(body.allowAttachment ?? body.allow_attachment ?? false);
     // Keep jsonb payload valid even when client does not send options.
     const options = body.options ?? [];
 
@@ -84,9 +93,17 @@ export async function POST(
         label,
         description,
         required,
+        allowAttachment,
         options,
       });
-      return NextResponse.json({ ok: true, data: created });
+      return NextResponse.json({
+        ok: true,
+        data: {
+          ...created,
+          allowAttachment: Boolean(created.allow_attachment),
+          allow_attachment: Boolean(created.allow_attachment),
+        },
+      });
     }
 
     // Retry once on unique conflicts to avoid transient 500 on rapid clicks.
@@ -113,9 +130,9 @@ export async function POST(
         const { rows: inserted } = await query<QuestionRow>(
           `
           INSERT INTO escrow_block_questions
-          (block_id, order_index, type, label, description, required, options)
-          VALUES ($1, $2, $3, $4, $5, $6, $7)
-          RETURNING id, block_id, order_index, type, label, description, required, options, created_at
+          (block_id, order_index, type, label, description, required, allow_attachment, options)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+          RETURNING id, block_id, order_index, type, label, description, required, COALESCE(allow_attachment, false) AS allow_attachment, options, created_at
           `,
           [
             blockId,
@@ -124,6 +141,7 @@ export async function POST(
             label,
             description,
             required,
+            allowAttachment,
             options
           ]
         );
@@ -131,7 +149,14 @@ export async function POST(
         if (!inserted[0]) {
           throw new Error("Question insert returned no rows");
         }
-        return NextResponse.json({ ok: true, data: inserted[0] });
+        return NextResponse.json({
+          ok: true,
+          data: {
+            ...inserted[0],
+            allowAttachment: Boolean(inserted[0].allow_attachment),
+            allow_attachment: Boolean(inserted[0].allow_attachment),
+          },
+        });
       } catch (e: unknown) {
         const maybePg = e as { code?: string };
         if (maybePg.code === "23505" && attempt === 0) {
