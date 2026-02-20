@@ -183,25 +183,48 @@ export function getTransaction(id: string): Transaction | undefined {
   return transactions.find((t) => t.id === id);
 }
 
+function recomputeTradePeriod(sourceBlocks: Block[]): { startDate: string | null; endDate: string | null } {
+  if (sourceBlocks.length === 0) {
+    return { startDate: null, endDate: null };
+  }
+
+  const startDate = sourceBlocks.reduce((min, b) =>
+    new Date(b.startDate).getTime() < new Date(min).getTime() ? b.startDate : min
+  , sourceBlocks[0].startDate);
+  const endDate = sourceBlocks.reduce((max, b) =>
+    new Date(b.endDate).getTime() > new Date(max).getTime() ? b.endDate : max
+  , sourceBlocks[0].endDate);
+  return { startDate, endDate };
+}
+
+function recalculateTransactionRangeFromBlocks(transactionId: string): void {
+  const tx = findTransaction(transactionId);
+  if (!tx) return;
+  const txBlocks = blocks.filter((b) => b.transactionId === transactionId);
+  const { startDate, endDate } = recomputeTradePeriod(txBlocks);
+  tx.startDate = startDate ?? tx.startDate;
+  tx.endDate = endDate ?? tx.endDate;
+}
+
 /**
- * Suggested default dates for a new block (suggestions only; user may adjust within bounds).
- * - First block: startDate = tx.startDate, endDate = tx.endDate
- * - Next blocks: startDate = previousBlock.endDate + 1 day, endDate = transaction.endDate
- * Returns null if there is no room (e.g. last block already ends at tx.endDate).
+ * Suggested default dates for a new block (suggestions only; user may adjust).
+ * Transaction period is derived from blocks, so this function does not clamp to tx dates.
  */
 export function getSuggestedBlockDates(transactionId: string): { startDate: string; endDate: string } | null {
   const tx = findTransaction(transactionId);
-  if (!tx?.startDate || !tx?.endDate) return null;
+  if (!tx) return null;
 
   const existing = blocks.filter((b) => b.transactionId === transactionId).sort((a, b) => a.orderIndex - b.orderIndex);
+  const today = toISODate(new Date());
   if (existing.length === 0) {
-    return { startDate: tx.startDate, endDate: tx.endDate };
+    const baseStart = tx.startDate ?? today;
+    const baseEnd = tx.endDate ?? addDays(baseStart, 6);
+    return { startDate: baseStart, endDate: baseEnd };
   }
 
   const last = existing[existing.length - 1];
   const startDate = addDays(last.endDate, 1);
-  if (startDate > tx.endDate) return null; // no room
-  return { startDate, endDate: tx.endDate };
+  return { startDate, endDate: addDays(startDate, 6) };
 }
 
 /** Last day of first half when splitting a block (inclusive). First half has floor(duration/2) days. */
@@ -229,8 +252,8 @@ export function addBlockWithAutoSplit(
   }
 
   const tx = findTransaction(transactionId);
-  if (!tx?.startDate || !tx?.endDate) {
-    throw new Error("Transaction must have startDate and endDate before adding blocks");
+  if (!tx) {
+    throw new Error("Transaction not found");
   }
 
   const existing = blocks.filter((b) => b.transactionId === transactionId).sort((a, b) => a.orderIndex - b.orderIndex);
@@ -252,14 +275,16 @@ export function addBlockWithAutoSplit(
   }
 
   if (existing.length === 0) {
+    const baseStart = tx.startDate ?? toISODate(new Date());
+    const baseEnd = tx.endDate ?? addDays(baseStart, 6);
     const policy = createApprovalPolicy({
       type: options.approvalType ?? "SINGLE",
       threshold: options.threshold,
     });
     return addBlock(transactionId, {
       title: options.title ?? "Block 1",
-      startDate: tx.startDate,
-      endDate: tx.endDate,
+      startDate: baseStart,
+      endDate: baseEnd,
       orderIndex: 1,
       approvalPolicyId: policy.id,
     });
@@ -343,12 +368,21 @@ export function saveTransactionGraph(graph: TransactionGraph): void {
   // Replace only: remove this graph's entities, then assign graph's (no append/merge)
   const txId = graph.transaction.id;
   const blockIdList = graph.blocks.map((b) => b.id);
+  const period = recomputeTradePeriod(graph.blocks);
+  const normalizedTransaction =
+    graph.blocks.length > 0
+      ? {
+          ...graph.transaction,
+          startDate: period.startDate ?? graph.transaction.startDate,
+          endDate: period.endDate ?? graph.transaction.endDate,
+        }
+      : graph.transaction;
 
   const txIndex = transactions.findIndex((t) => t.id === txId);
   if (txIndex >= 0) {
-    transactions[txIndex] = graph.transaction;
+    transactions[txIndex] = normalizedTransaction;
   } else {
-    transactions = [...transactions, graph.transaction];
+    transactions = [...transactions, normalizedTransaction];
   }
 
   blocks = [...blocks.filter((b) => b.transactionId !== txId), ...graph.blocks];
@@ -396,13 +430,10 @@ export function updateBlock(id: string, patch: Partial<Block>): Block {
     throw new Error("Block can only be updated in DRAFT status");
   }
 
-  const tx = findTransaction(block.transactionId);
   const newStart = patch.startDate ?? block.startDate;
   const newEnd = patch.endDate ?? block.endDate;
   if (patch.startDate !== undefined || patch.endDate !== undefined) {
     if (newStart > newEnd) throw new Error("Block startDate must be before or equal to endDate");
-    if (tx?.startDate && newStart < tx.startDate) throw new Error("Block must be within transaction range");
-    if (tx?.endDate && newEnd > tx.endDate) throw new Error("Block must be within transaction range");
     const others = blocks.filter((b) => b.transactionId === block.transactionId && b.id !== id);
     for (const b of others) {
       if (blocksOverlap(b.startDate, b.endDate, newStart, newEnd)) {
@@ -412,6 +443,7 @@ export function updateBlock(id: string, patch: Partial<Block>): Block {
   }
 
   Object.assign(block, patch);
+  recalculateTransactionRangeFromBlocks(block.transactionId);
   saveToFile();
   return block;
 }
@@ -431,8 +463,8 @@ export function addBlock(transactionId: string, block: Omit<Block, "id" | "trans
   }
 
   const tx = findTransaction(transactionId);
-  if (!tx?.startDate || !tx?.endDate) {
-    throw new Error("Transaction must have startDate and endDate before adding blocks");
+  if (!tx) {
+    throw new Error("Transaction not found");
   }
 
   const existing = blocks.filter((b) => b.transactionId === transactionId).sort((a, b) => a.orderIndex - b.orderIndex);
@@ -440,9 +472,6 @@ export function addBlock(transactionId: string, block: Omit<Block, "id" | "trans
     if (blocksOverlap(b.startDate, b.endDate, block.startDate, block.endDate)) {
       throw new Error("Blocks cannot overlap");
     }
-  }
-  if (block.startDate < tx.startDate || block.endDate > tx.endDate) {
-    throw new Error("Block must be within transaction date range");
   }
   if (block.startDate > block.endDate) {
     throw new Error("Block startDate must be before or equal to endDate");
@@ -455,6 +484,7 @@ export function addBlock(transactionId: string, block: Omit<Block, "id" | "trans
     isActive: false,
   };
   blocks.push(newBlock);
+  recalculateTransactionRangeFromBlocks(transactionId);
   appendLog(transactionId, "ADMIN", "BLOCK_ADDED", { blockId: newBlock.id });
   saveToFile();
   return newBlock;
@@ -494,6 +524,7 @@ export function splitBlock(blockId: string, splitDateIso: string): { block1: Blo
   const blockIndex = blocks.findIndex((b) => b.id === blockId);
   blocks[blockIndex] = block1;
   blocks.push(block2);
+  recalculateTransactionRangeFromBlocks(block.transactionId);
 
   workRules
     .filter((wr) => wr.blockId === blockId)
@@ -859,6 +890,7 @@ export function deleteBlock(blockId: string): void {
     });
 
   blocks = blocks.filter((b) => b.id !== blockId);
+  recalculateTransactionRangeFromBlocks(block.transactionId);
   appendLog(block.transactionId, "ADMIN", "BLOCK_DELETED", { blockId });
   saveToFile();
 }

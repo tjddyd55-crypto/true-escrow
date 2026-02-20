@@ -1,5 +1,5 @@
 /**
- * Block date constraints: block must be within transaction range; no overlap.
+ * Block date constraints: no overlap + transaction range is derived from blocks.
  */
 import { describe, it, expect, beforeEach } from "vitest";
 import * as store from "@/lib/transaction-engine/store";
@@ -30,16 +30,16 @@ describe("Block date constraints", () => {
     blockId = block.id;
   });
 
-  it("updateBlock rejects startDate before transaction startDate", () => {
-    expect(() =>
-      store.updateBlock(blockId, { startDate: "2025-01-15", endDate: "2025-02-10" })
-    ).toThrow("Block must be within transaction range");
-  });
-
-  it("updateBlock rejects endDate after transaction endDate", () => {
-    expect(() =>
-      store.updateBlock(blockId, { startDate: "2025-02-05", endDate: "2025-03-15" })
-    ).toThrow("Block must be within transaction range");
+  it("updateBlock allows extending outside initial transaction range and updates transaction dates", () => {
+    const updated = store.updateBlock(blockId, {
+      startDate: "2025-01-15",
+      endDate: "2025-03-15",
+    });
+    expect(updated.startDate).toBe("2025-01-15");
+    expect(updated.endDate).toBe("2025-03-15");
+    const tx = store.getTransaction(transactionId)!;
+    expect(tx.startDate).toBe("2025-01-15");
+    expect(tx.endDate).toBe("2025-03-15");
   });
 
   it("updateBlock accepts dates within transaction range", () => {
@@ -61,5 +61,18 @@ describe("Block date constraints", () => {
         approvalPolicyId: store.createApprovalPolicy({ type: "SINGLE" }).id,
       })
     ).toThrow("Blocks cannot overlap");
+  });
+
+  it("addBlock expands transaction range from block min/max", () => {
+    store.addBlock(transactionId, {
+      title: "Late Block",
+      startDate: "2025-03-01",
+      endDate: "2025-03-10",
+      orderIndex: 2,
+      approvalPolicyId: store.createApprovalPolicy({ type: "SINGLE" }).id,
+    });
+    const tx = store.getTransaction(transactionId)!;
+    expect(tx.startDate).toBe("2025-02-05");
+    expect(tx.endDate).toBe("2025-03-10");
   });
 });

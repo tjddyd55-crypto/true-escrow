@@ -1,6 +1,5 @@
 /**
- * addBlockWithAutoSplit: template 1 block → addBlock → 2 blocks → addBlock → 3 blocks.
- * Assert: block date sum = transaction period, no overlap.
+ * addBlockWithAutoSplit: adding blocks keeps non-overlap and transaction range sync.
  */
 import { describe, it, expect, beforeAll } from "vitest";
 import { buildTransactionFromTemplateSpec } from "@/lib/build-transaction-from-spec";
@@ -28,12 +27,12 @@ function blocksOverlap(
   return aStart <= bEnd && bStart <= aEnd;
 }
 
-describe("addBlockWithAutoSplit (auto-split when no room)", () => {
+describe("addBlockWithAutoSplit", () => {
   beforeAll(() => {
     expect(process.env.TRANSACTION_ENGINE_DATA_FILE).toBeDefined();
   });
 
-  it("1 block → addBlock → 2 blocks → addBlock → 3 blocks; sum of block days = tx period; no overlap", () => {
+  it("1 block → addBlock → 2 blocks → addBlock → 3 blocks; transaction dates are derived from blocks", () => {
     const today = new Date().toISOString().slice(0, 10);
     const endDefault = addDays(today, 30);
 
@@ -48,9 +47,6 @@ describe("addBlockWithAutoSplit (auto-split when no room)", () => {
     expect(graph.blocks.length).toBe(1);
     store.saveTransactionGraph(graph);
     const id = graph.transaction.id;
-    const tx = store.getTransaction(id)!;
-    const txDays = daysBetween(tx.startDate!, tx.endDate!);
-
     store.addBlockWithAutoSplit(id, { title: "Block 2", orderIndex: 2 });
     let blocks = store.getBlocks(id);
     expect(blocks.length).toBe(2);
@@ -59,12 +55,6 @@ describe("addBlockWithAutoSplit (auto-split when no room)", () => {
     blocks = store.getBlocks(id);
     expect(blocks.length).toBe(3);
 
-    const sumBlockDays = blocks.reduce(
-      (sum, b) => sum + daysBetween(b.startDate, b.endDate),
-      0
-    );
-    expect(sumBlockDays).toBe(txDays);
-
     for (let i = 0; i < blocks.length; i++) {
       for (let j = i + 1; j < blocks.length; j++) {
         const a = blocks[i];
@@ -72,5 +62,12 @@ describe("addBlockWithAutoSplit (auto-split when no room)", () => {
         expect(blocksOverlap(a.startDate, a.endDate, b.startDate, b.endDate)).toBe(false);
       }
     }
+
+    const minStart = blocks.reduce((min, b) => (b.startDate < min ? b.startDate : min), blocks[0].startDate);
+    const maxEnd = blocks.reduce((max, b) => (b.endDate > max ? b.endDate : max), blocks[0].endDate);
+    const tx = store.getTransaction(id)!;
+    expect(tx.startDate).toBe(minStart);
+    expect(tx.endDate).toBe(maxEnd);
+    expect(daysBetween(tx.startDate!, tx.endDate!)).toBeGreaterThanOrEqual(daysBetween(today, endDefault));
   });
 });

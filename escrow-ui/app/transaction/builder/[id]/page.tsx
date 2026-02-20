@@ -122,10 +122,6 @@ export default function TransactionBuilderPage() {
 
   async function addBlock() {
     if (!graph || graph.transaction.status !== "DRAFT") return;
-    if (!graph.transaction.startDate || !graph.transaction.endDate) {
-      console.error("Transaction must have startDate and endDate");
-      return;
-    }
 
     const orderIndex = graph.blocks.length + 1;
     try {
@@ -337,6 +333,24 @@ export default function TransactionBuilderPage() {
     setDropTargetBlockId(null);
   }
 
+  function moveBlockUp(blockId: string) {
+    if (!graph || graph.transaction.status !== "DRAFT") return;
+    const ordered = [...graph.blocks].sort((a, b) => a.orderIndex - b.orderIndex).map((b) => b.id);
+    const index = ordered.indexOf(blockId);
+    if (index <= 0) return;
+    [ordered[index - 1], ordered[index]] = [ordered[index], ordered[index - 1]];
+    reorderBlocks(ordered);
+  }
+
+  function moveBlockDown(blockId: string) {
+    if (!graph || graph.transaction.status !== "DRAFT") return;
+    const ordered = [...graph.blocks].sort((a, b) => a.orderIndex - b.orderIndex).map((b) => b.id);
+    const index = ordered.indexOf(blockId);
+    if (index < 0 || index >= ordered.length - 1) return;
+    [ordered[index], ordered[index + 1]] = [ordered[index + 1], ordered[index]];
+    reorderBlocks(ordered);
+  }
+
   async function activateTransaction() {
     if (!graph || graph.transaction.status !== "DRAFT") return;
     if (!confirm("Activate this transaction? Block structure will be locked.")) return;
@@ -472,11 +486,11 @@ export default function TransactionBuilderPage() {
   }
 
   if (loading) {
-    return <div style={{ padding: 40 }}>{t.loading}</div>;
+    return <div className="max-w-6xl mx-auto px-4 py-6">{t.loading}</div>;
   }
 
   if (!graph) {
-    return <div style={{ padding: 40 }}>{t.transactionNotFound}</div>;
+    return <div className="max-w-6xl mx-auto px-4 py-6">{t.transactionNotFound}</div>;
   }
 
   const isDraft = graph.transaction.status === "DRAFT";
@@ -490,10 +504,10 @@ export default function TransactionBuilderPage() {
   const activeBlock = graph.blocks.find((b) => b.isActive);
 
   return (
-    <main style={{ padding: "40px 20px", maxWidth: 1400, margin: "0 auto" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
-        <h1 style={{ fontSize: "2.5rem", marginBottom: 0 }}>{t.slogan}</h1>
-        <div style={{ display: "flex", gap: 12, alignItems: "center", fontSize: "0.9rem" }}>
+    <main className="max-w-6xl mx-auto px-4 py-6">
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 16 }}>
+        <h1 style={{ fontSize: "2rem", marginBottom: 0, lineHeight: 1.2 }}>{t.slogan}</h1>
+        <div style={{ display: "flex", gap: 12, alignItems: "center", fontSize: "0.9rem", flexWrap: "wrap" }}>
           <span
             onClick={() => setLang("en")}
             style={{
@@ -521,7 +535,7 @@ export default function TransactionBuilderPage() {
       </div>
 
       {/* Transaction Header */}
-      <div style={{ marginBottom: 30, padding: 20, border: "1px solid #e0e0e0", borderRadius: 8, position: "relative" }}>
+      <div style={{ marginBottom: 24, padding: 16, border: "1px solid #e5e7eb", borderRadius: 12, position: "relative", backgroundColor: "#fff" }}>
         {isDraft ? (
           <>
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
@@ -568,24 +582,24 @@ export default function TransactionBuilderPage() {
             <p style={{ margin: 0, color: "#666" }}>{graph.transaction.description}</p>
           </>
         )}
-        {isDraft && (
-          <div style={{ display: "flex", gap: 16, alignItems: "center", marginTop: 10, flexWrap: "wrap" }}>
-            <label style={{ fontSize: "0.9rem", color: "#666" }}>
-              {t.startDate}: <input type="date" value={txStart || ""} onChange={(e) => updateTransaction({ startDate: e.target.value })} style={{ padding: 4, border: "1px solid #e0e0e0", borderRadius: 4 }} />
-            </label>
-            <label style={{ fontSize: "0.9rem", color: "#666" }}>
-              {t.endDate}: <input type="date" value={txEnd || ""} onChange={(e) => updateTransaction({ endDate: e.target.value })} style={{ padding: 4, border: "1px solid #e0e0e0", borderRadius: 4 }} />
-            </label>
+        <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-4">
+          <div className="text-sm text-gray-500">전체 거래 기간 (자동 계산)</div>
+          <div className="font-medium text-lg">
+            {(txStart || "-")} → {(txEnd || "-")}
           </div>
-        )}
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 15 }}>
-          <span style={{ color: "#666" }}>{t.overallDuration}: {overallDuration}</span>
-          <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+          <div className="text-xs text-gray-400">
+            블록 기간을 기준으로 자동 설정됩니다.
+          </div>
+        </div>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
+          <span className="truncate" style={{ color: "#666", minWidth: 0 }}>{t.overallDuration}: {overallDuration}</span>
+          <div className="flex flex-wrap gap-2 items-center">
             <Link
               href={`/transaction/preview/${transactionId}`}
               style={{
                 padding: "8px 16px",
-                backgroundColor: "#6366f1",
+                minHeight: 40,
+                backgroundColor: "#3b82f6",
                 color: "white",
                 border: "none",
                 borderRadius: 4,
@@ -602,6 +616,7 @@ export default function TransactionBuilderPage() {
                 onClick={saveAsTemplate}
                 style={{
                   padding: "8px 16px",
+                  minHeight: 40,
                   backgroundColor: "#0ea5e9",
                   color: "white",
                   border: "none",
@@ -630,6 +645,7 @@ export default function TransactionBuilderPage() {
                 onClick={activateTransaction}
                 style={{
                   padding: "8px 16px",
+                minHeight: 40,
                   backgroundColor: "#00b894",
                   color: "white",
                   border: "none",
@@ -645,18 +661,19 @@ export default function TransactionBuilderPage() {
         </div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 300px", gap: 20 }}>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-6">
         {/* Main Content */}
-        <div>
+        <div className="lg:col-span-2">
           {/* Blocks */}
-          <div style={{ marginBottom: 40 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+          <div style={{ marginBottom: 24 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 16 }}>
               <h2 style={{ fontSize: "1.8rem" }}>{t.blocks}</h2>
               {isDraft && (
                 <button
                   onClick={addBlock}
                   style={{
                     padding: "8px 16px",
+                    minHeight: 40,
                     backgroundColor: "#0070f3",
                     color: "white",
                     border: "none",
@@ -670,7 +687,7 @@ export default function TransactionBuilderPage() {
               )}
             </div>
 
-            <div style={{ display: "grid", gap: 20 }}>
+            <div style={{ display: "grid", gap: 16 }}>
               {graph.blocks.map((block, blockIndex) => {
                 const policy = graph.approvalPolicies.find((p) => p.id === block.approvalPolicyId);
                 const approvers = graph.blockApprovers.filter((a) => a.blockId === block.id);
@@ -679,6 +696,8 @@ export default function TransactionBuilderPage() {
                 const approvalReason =
                   readiness?.missingRequired?.[0]?.reason ?? "필수 질문 답변이 필요합니다.";
                 const blockColor = BLOCK_COLORS[blockIndex % BLOCK_COLORS.length];
+                const isFirst = blockIndex === 0;
+                const isLast = blockIndex === graph.blocks.length - 1;
 
                 return (
                   <div
@@ -703,19 +722,19 @@ export default function TransactionBuilderPage() {
                       setDropTargetBlockId(null);
                     }}
                     style={{
-                      padding: 20,
-                      border: "1px solid #e0e0e0",
+                      padding: 16,
+                      border: "1px solid #e5e7eb",
                       borderLeft: `4px solid ${blockColor}`,
-                      borderRadius: 8,
+                      borderRadius: 12,
                       backgroundColor: block.isActive ? "#f0f9ff" : "white",
-                      boxShadow: dropTargetBlockId === block.id ? "0 0 0 2px #6366f1 inset" : undefined,
+                      boxShadow: dropTargetBlockId === block.id ? "0 0 0 2px #3b82f6 inset" : undefined,
                       cursor: isDraft ? "grab" : "default",
                     }}
                   >
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start", marginBottom: 15 }}>
-                      <div style={{ flex: 1 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
                         {isDraft ? (
-                          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 5 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
                             <span title="Drag to reorder block" style={{ color: "#6b7280", cursor: "grab", userSelect: "none" }}>⋮⋮</span>
                             <span
                               style={{
@@ -744,7 +763,7 @@ export default function TransactionBuilderPage() {
                                 });
                               }}
                               placeholder={t.blockTitle}
-                              style={{ flex: 1, padding: 8, fontSize: "1.1rem", fontWeight: "600", border: "1px solid #e0e0e0", borderRadius: 4 }}
+                              style={{ flex: 1, minWidth: 0, padding: 8, fontSize: "1.1rem", fontWeight: "600", border: "1px solid #e0e0e0", borderRadius: 4 }}
                             />
                             <SaveStatusIndicator status={getBlockSaveStatus(block.id)} />
                           </div>
@@ -760,28 +779,30 @@ export default function TransactionBuilderPage() {
                               }}
                             />
                             <span style={{ fontSize: "1rem", color: "#666" }}>🔒</span>
-                            <h3 style={{ margin: 0 }}>{tKey(block.title)}</h3>
+                            <h3 className="truncate" style={{ margin: 0 }}>{tKey(block.title)}</h3>
                           </div>
                         )}
                         <div style={{ display: "flex", gap: 15, alignItems: "center", marginBottom: 10, flexWrap: "wrap" }}>
                           {isDraft ? (
                             <>
-                              <input
-                                type="date"
-                                value={block.startDate}
-                                onChange={(e) => updateBlock(block.id, { startDate: e.target.value })}
-                                style={{ padding: 4, border: "1px solid #e0e0e0", borderRadius: 4 }}
-                              />
-                              <span>→</span>
-                              <input
-                                type="date"
-                                value={block.endDate}
-                                onChange={(e) => updateBlock(block.id, { endDate: e.target.value })}
-                                style={{ padding: 4, border: "1px solid #e0e0e0", borderRadius: 4 }}
-                              />
-                              <span style={{ fontSize: "0.85rem", color: "#666" }}>
-                                ({daysBetween(block.startDate, block.endDate)} days)
-                              </span>
+                              <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
+                                <input
+                                  type="date"
+                                  value={block.startDate}
+                                  onChange={(e) => updateBlock(block.id, { startDate: e.target.value })}
+                                  style={{ padding: 6, minHeight: 40, border: "1px solid #e0e0e0", borderRadius: 6 }}
+                                />
+                                <span>→</span>
+                                <input
+                                  type="date"
+                                  value={block.endDate}
+                                  onChange={(e) => updateBlock(block.id, { endDate: e.target.value })}
+                                  style={{ padding: 6, minHeight: 40, border: "1px solid #e0e0e0", borderRadius: 6 }}
+                                />
+                                <span style={{ fontSize: "0.85rem", color: "#666" }}>
+                                  ({daysBetween(block.startDate, block.endDate)} days)
+                                </span>
+                              </div>
                             </>
                           ) : (
                             <span style={{ fontSize: "0.9rem", color: "#666" }}>
@@ -790,7 +811,25 @@ export default function TransactionBuilderPage() {
                           )}
                         </div>
                       </div>
-                      <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                      <div className="flex flex-wrap gap-2 items-center">
+                        {isDraft && graph.blocks.length > 1 && (
+                          <div className="flex gap-2">
+                            <button
+                              disabled={isFirst}
+                              onClick={() => moveBlockUp(block.id)}
+                              className="px-3 py-2 min-h-10 text-sm bg-gray-100 rounded disabled:opacity-40"
+                            >
+                              ↑
+                            </button>
+                            <button
+                              disabled={isLast}
+                              onClick={() => moveBlockDown(block.id)}
+                              className="px-3 py-2 min-h-10 text-sm bg-gray-100 rounded disabled:opacity-40"
+                            >
+                              ↓
+                            </button>
+                          </div>
+                        )}
                         <span
                           style={{
                             padding: "4px 12px",
@@ -816,39 +855,12 @@ export default function TransactionBuilderPage() {
                           {block.isActive ? t.active : t.locked}
                         </span>
                         {isDraft && graph.blocks.length > 1 && (
-                          <>
-                            {blockIndex > 0 && (
-                              <button
-                                onClick={() => {
-                                  const next = [...graph.blocks];
-                                  [next[blockIndex - 1], next[blockIndex]] = [next[blockIndex], next[blockIndex - 1]];
-                                  reorderBlocks(next.map((b) => b.id));
-                                }}
-                                style={{ padding: "4px 8px", fontSize: "0.8rem" }}
-                              >
-                                ↑ Block
-                              </button>
-                            )}
-                            {blockIndex < graph.blocks.length - 1 && (
-                              <button
-                                onClick={() => {
-                                  const next = [...graph.blocks];
-                                  [next[blockIndex], next[blockIndex + 1]] = [next[blockIndex + 1], next[blockIndex]];
-                                  reorderBlocks(next.map((b) => b.id));
-                                }}
-                                style={{ padding: "4px 8px", fontSize: "0.8rem" }}
-                              >
-                                ↓ Block
-                              </button>
-                            )}
-                          </>
-                        )}
-                        {isDraft && graph.blocks.length > 1 && (
                           <button
                             onClick={() => deleteBlock(block.id)}
                             style={{
-                              padding: "4px 8px",
-                              backgroundColor: "#e74c3c",
+                              padding: "8px 12px",
+                              minHeight: 40,
+                              backgroundColor: "#ef4444",
                               color: "white",
                               border: "none",
                               borderRadius: 4,
@@ -863,7 +875,7 @@ export default function TransactionBuilderPage() {
                     </div>
 
                     {/* Approval Policy — editable only when transaction.status === "DRAFT" */}
-                    <div style={{ marginBottom: 15, padding: 10, backgroundColor: "#f8f9fa", borderRadius: 4 }}>
+                    <div style={{ marginBottom: 12, padding: 10, backgroundColor: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: 8 }}>
                       <label style={{ display: "block", marginBottom: 5, fontSize: "0.9rem", fontWeight: "600" }}>
                         {t.approvalPolicy}:
                       </label>
@@ -875,7 +887,8 @@ export default function TransactionBuilderPage() {
                         }}
                         disabled={!isDraft}
                         style={{
-                          padding: 4,
+                          padding: 8,
+                          minHeight: 40,
                           border: "1px solid #e0e0e0",
                           borderRadius: 4,
                           fontSize: "0.9rem",
@@ -896,7 +909,7 @@ export default function TransactionBuilderPage() {
                     </div>
 
                     {/* Approvers — role = SELECT (enum), display name = text input */}
-                    <div style={{ marginBottom: 15, padding: 10, backgroundColor: "#f8f9fa", borderRadius: 4 }}>
+                    <div style={{ marginBottom: 12, padding: 10, backgroundColor: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: 8 }}>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
                         <label style={{ fontSize: "0.9rem", fontWeight: "600" }}>{t.approvers}:</label>
                         {isDraft && addApproverBlockId !== block.id && (
@@ -904,8 +917,9 @@ export default function TransactionBuilderPage() {
                             type="button"
                             onClick={() => setAddApproverBlockId(block.id)}
                             style={{
-                              padding: "4px 8px",
-                              backgroundColor: "#6c5ce7",
+                              padding: "8px 12px",
+                              minHeight: 40,
+                              backgroundColor: "#3b82f6",
                               color: "white",
                               border: "none",
                               borderRadius: 4,
@@ -922,7 +936,7 @@ export default function TransactionBuilderPage() {
                           <select
                             value={addApproverRole}
                             onChange={(e) => setAddApproverRole(e.target.value as ApproverRole)}
-                            style={{ padding: 6, border: "1px solid #e0e0e0", borderRadius: 4, fontSize: "0.9rem" }}
+                            style={{ padding: 8, minHeight: 40, border: "1px solid #e0e0e0", borderRadius: 6, fontSize: "0.9rem" }}
                           >
                             {APPROVER_ROLES.map((r) => (
                               <option key={r} value={r}>{r}</option>
@@ -933,13 +947,14 @@ export default function TransactionBuilderPage() {
                             value={addApproverDisplayName}
                             onChange={(e) => setAddApproverDisplayName(e.target.value)}
                             placeholder={t.enterDisplayName}
-                            style={{ padding: 6, border: "1px solid #e0e0e0", borderRadius: 4, fontSize: "0.9rem", minWidth: 140 }}
+                            style={{ padding: 8, minHeight: 40, border: "1px solid #e0e0e0", borderRadius: 6, fontSize: "0.9rem", minWidth: 140 }}
                           />
                           <button
                             type="button"
                             onClick={() => addApprover(block.id, addApproverRole, addApproverDisplayName, true)}
                             style={{
-                              padding: "6px 12px",
+                              padding: "8px 12px",
+                              minHeight: 40,
                               backgroundColor: "#00b894",
                               color: "white",
                               border: "none",
@@ -954,7 +969,8 @@ export default function TransactionBuilderPage() {
                             type="button"
                             onClick={() => { setAddApproverBlockId(null); setAddApproverDisplayName(""); }}
                             style={{
-                              padding: "6px 12px",
+                              padding: "8px 12px",
+                              minHeight: 40,
                               backgroundColor: "#95a5a6",
                               color: "white",
                               border: "none",
@@ -1011,13 +1027,14 @@ export default function TransactionBuilderPage() {
                                 <button
                                   onClick={() => deleteApprover(approver.id, block.id)}
                                   style={{
-                                    padding: "2px 6px",
-                                    backgroundColor: "#e74c3c",
+                                    padding: "6px 10px",
+                                    minHeight: 36,
+                                    backgroundColor: "#ef4444",
                                     color: "white",
                                     border: "none",
                                     borderRadius: 4,
                                     cursor: "pointer",
-                                    fontSize: "0.75rem",
+                                    fontSize: "0.8rem",
                                   }}
                                 >
                                   {t.remove}
@@ -1066,6 +1083,7 @@ export default function TransactionBuilderPage() {
                           style={{
                             width: "100%",
                             padding: "8px 16px",
+                            minHeight: 40,
                             backgroundColor: canApproveByQuestions ? "#00b894" : "#9ca3af",
                             color: "white",
                             border: "none",
@@ -1085,11 +1103,11 @@ export default function TransactionBuilderPage() {
           </div>
 
           {/* Timeline: 설계 결과를 “실제 날짜 기준으로 어떻게 흘러가는지” 한눈에 보는 시각화. 읽기 전용. */}
-          <div style={{ marginBottom: 40 }}>
-            <h2 style={{ fontSize: "1.8rem", marginBottom: 20 }}>{t.timeline}</h2>
+          <div style={{ marginBottom: 24 }}>
+            <h2 style={{ fontSize: "1.8rem", marginBottom: 16 }}>{t.timeline}</h2>
             {!txStart || !txEnd ? (
-              <p style={{ color: "#666", textAlign: "center", padding: 20, border: "1px solid #e0e0e0", borderRadius: 8 }}>
-                Set transaction start/end date to see the calendar.
+              <p style={{ color: "#666", textAlign: "center", padding: 16, border: "1px solid #e5e7eb", borderRadius: 8 }}>
+                블록 날짜를 설정하면 캘린더가 표시됩니다.
               </p>
             ) : (
               <TransactionCalendar
@@ -1105,21 +1123,21 @@ export default function TransactionBuilderPage() {
         </div>
 
         {/* Activity Log */}
-        <div>
-          <h3 style={{ fontSize: "1.2rem", marginBottom: 15 }}>{t.activityLog}</h3>
-          <div style={{ border: "1px solid #e0e0e0", borderRadius: 8, padding: 15, maxHeight: "600px", overflowY: "auto" }}>
+        <div className="lg:sticky lg:top-4 h-fit">
+          <h3 style={{ fontSize: "1.2rem", marginBottom: 12 }}>{t.activityLog}</h3>
+          <div style={{ border: "1px solid #e5e7eb", borderRadius: 12, padding: 12, maxHeight: "600px", overflowY: "auto", backgroundColor: "#fff" }}>
             {logs.length === 0 ? (
               <p style={{ color: "#666", fontSize: "0.9rem" }}>No activity yet</p>
             ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 {logs.map((log) => (
                   <div
                     key={log.id}
                     style={{
                       padding: 10,
-                      borderLeft: "3px solid #0070f3",
-                      backgroundColor: "#f8f9fa",
-                      borderRadius: 4,
+                      borderLeft: "3px solid #3b82f6",
+                      backgroundColor: "#f9fafb",
+                      borderRadius: 8,
                     }}
                   >
                     <div style={{ fontWeight: "600", fontSize: "0.9rem", marginBottom: 4 }}>

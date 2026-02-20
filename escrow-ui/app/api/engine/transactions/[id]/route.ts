@@ -62,8 +62,6 @@ export async function PATCH(
     const transactionCopy = structuredClone(transaction);
     if (body.title !== undefined) transactionCopy.title = body.title;
     if (body.description !== undefined) transactionCopy.description = body.description;
-    if (body.startDate !== undefined) transactionCopy.startDate = body.startDate;
-    if (body.endDate !== undefined) transactionCopy.endDate = body.endDate;
 
     const blocks = store.getBlocks(id);
     const graph = {
