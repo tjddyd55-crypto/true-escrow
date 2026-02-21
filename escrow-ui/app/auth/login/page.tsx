@@ -48,7 +48,17 @@ export default function LoginPage() {
         </button>
       </form>
       <p className="text-sm text-gray-600 mt-4">
-        계정이 없나요? <Link href="/auth/signup" className="text-blue-600">회원가입</Link>
+        계정이 없나요?{" "}
+        <Link
+          href={
+            typeof window !== "undefined" && new URLSearchParams(window.location.search).get("next")
+              ? `/auth/signup?next=${encodeURIComponent(new URLSearchParams(window.location.search).get("next") ?? "")}`
+              : "/auth/signup"
+          }
+          className="text-blue-600"
+        >
+          회원가입
+        </Link>
       </p>
     </main>
   );

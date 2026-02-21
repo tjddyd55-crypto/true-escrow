@@ -1,7 +1,14 @@
 import { NextResponse } from "next/server";
-import { clearSession } from "@/lib/trade-mvp/session";
+import { SESSION_COOKIE_NAME } from "@/lib/trade-mvp/session";
 
 export async function POST() {
-  await clearSession();
-  return NextResponse.json({ ok: true });
+  const response = NextResponse.json({ ok: true });
+  response.cookies.set(SESSION_COOKIE_NAME, "", {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    maxAge: 0,
+  });
+  return response;
 }
