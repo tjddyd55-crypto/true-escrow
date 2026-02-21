@@ -4,7 +4,7 @@ import { canApproveBlock } from "@/lib/transaction-engine/block-approval";
 import { evaluateAndApplyBlockPolicy } from "@/lib/transaction-engine/block-policy-evaluator";
 
 export async function POST(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: Promise<{ blockId: string }> }
 ) {
   try {
@@ -13,28 +13,25 @@ export async function POST(
     if (!block) {
       return NextResponse.json({ ok: false, error: "Block not found" }, { status: 404 });
     }
-    const result = await canApproveBlock({ tradeId: block.transactionId, blockId });
-    if (!result.canApprove) {
+    const readiness = await canApproveBlock({ tradeId: block.transactionId, blockId });
+    if (!readiness.canApprove) {
       return NextResponse.json(
-        { ok: false, error: result.reason ?? "Block cannot be approved", data: { missingRequired: result.missingRequired } },
+        { ok: false, error: readiness.reason ?? "Required questions are not satisfied", data: { missingRequired: readiness.missingRequired } },
         { status: 400 }
       );
     }
+    store.submitBlock(blockId);
     const policyState = await evaluateAndApplyBlockPolicy({
       tradeId: block.transactionId,
       blockId,
     });
-    if (block.approvalMode === "AUTO_RELEASE" && !policyState.autoEligible) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error: "AUTO_RELEASE cannot be used when any question allows attachments",
-        },
-        { status: 400 }
-      );
-    }
-    const approvedBlock = store.approveBlock(blockId);
-    return NextResponse.json({ ok: true, data: approvedBlock });
+    return NextResponse.json({
+      ok: true,
+      data: {
+        block: store.getBlockById(blockId),
+        policy: policyState,
+      },
+    });
   } catch (error: any) {
     return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
   }

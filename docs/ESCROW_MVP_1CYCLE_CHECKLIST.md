@@ -76,10 +76,18 @@
   Blank + 예시 템플릿 2개 + 내 템플릿이 함께 보인다.
 - [ ] **Google-Forms-like question authoring**  
   질문 추가/수정/복제/삭제/순서 변경(드래그 or up/down), 타입별 옵션 편집(checkbox/radio/dropdown/grid/number) 동작.
-- [ ] **File question metadata flow**  
-  FILE 질문에서 첨부 메타데이터 API 호출 후 readiness 계산 시 필수 첨부로 반영된다.
+- [ ] **Attachment metadata flow**  
+  질문별 `allowAttachment=true`일 때 첨부 메타데이터 API 호출 후 readiness 계산 시 필수 첨부로 반영된다.
 - [ ] **Readiness badge correctness**  
   `/api/engine/trades/[tradeId]/blocks/[blockId]/readiness` 결과와 Builder READY/NOT READY 배지가 일치한다.
+- [ ] **Block Policy controls**  
+  Builder에서 `dueDate`, `approvalMode`, `reviewTimeoutHours` 수정이 가능하고 상태 배지가 즉시 반영된다.
+- [ ] **Manual action buttons by status**  
+  상태에 따라 Submit/Approve/Reject/Extend/Dispute/Cancel 버튼 노출이 달라지고 잘못된 상태 전이는 API에서 차단된다.
+- [ ] **AUTO_RELEASE 제약**  
+  블록 질문 중 `allowAttachment=true`가 하나라도 있으면 `AUTO_RELEASE` 즉시승인 정책이 금지된다.
+- [ ] **Extension history visible**  
+  Extend 액션 누적 이력이 블록 카드에서 확인되고, dueDate가 연장 이력과 함께 저장된다.
 - [ ] **No append/duplicate regression**  
   reorder/save 이후 `saveTransactionGraph` replace-only 정책 유지, 배열 중복 누적 없음.
 

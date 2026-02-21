@@ -5,9 +5,32 @@
 export type TransactionStatus = "DRAFT" | "ACTIVE" | "PAUSED" | "COMPLETED";
 export type ApprovalPolicyType = "SINGLE" | "ALL" | "ANY" | "THRESHOLD";
 export type ApproverRole = "BUYER" | "SELLER" | "VERIFIER" | "ADMIN";
+export type ApprovalMode =
+  | "AUTO_RELEASE"
+  | "AUTO_APPROVE_THEN_RELEASE"
+  | "MANUAL_REVIEW_REQUIRED"
+  | "AUTO_DISPUTE_IF_NO_RESPONSE";
+export type BlockStatus =
+  | "IN_PROGRESS"
+  | "SUBMITTED"
+  | "REVIEWING"
+  | "APPROVED"
+  | "REJECTED"
+  | "EXTENDED"
+  | "DISPUTED"
+  | "OVERDUE"
+  | "CANCELLED";
 export type WorkRuleType = "BLOG" | "CUSTOM" | "REVIEW" | "SIGN_OFF" | "DELIVERY" | "DOCUMENT" | "INSPECTION";
 export type WorkFrequency = "ONCE" | "DAILY" | "WEEKLY" | "CUSTOM";
 export type WorkItemStatus = "PENDING" | "SUBMITTED" | "APPROVED" | "REJECTED";
+
+export type BlockExtension = {
+  previousDueDate: string;
+  newDueDate: string;
+  decidedBy: "BUYER" | "SELLER";
+  reason?: string;
+  timestamp: string;
+};
 
 export type Transaction = {
   id: string;
@@ -34,6 +57,16 @@ export type Block = {
   orderIndex: number;
   approvalPolicyId: string;
   isActive: boolean;
+  dueDate: string;
+  approvalMode: ApprovalMode;
+  reviewTimeoutHours?: number;
+  status: BlockStatus;
+  extensions: BlockExtension[];
+  disputeReason?: string;
+  rejectionReason?: string;
+  submittedAt?: string;
+  approvedAt?: string;
+  rejectedAt?: string;
 };
 
 /** Timeline segment: real block or system-generated gap (neutral empty time; no meaning, no rules). */

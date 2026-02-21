@@ -27,8 +27,12 @@ export async function POST(request: NextRequest) {
         title: body.title ?? `Block ${orderIndex}`,
         startDate: body.startDate,
         endDate: body.endDate,
+        dueDate: body.dueDate ?? body.endDate,
         orderIndex,
         approvalPolicyId: policy.id,
+        approvalMode: body.approvalMode,
+        reviewTimeoutHours: body.reviewTimeoutHours,
+        status: body.status,
       });
     } else {
       block = store.addBlockWithAutoSplit(transactionId, {

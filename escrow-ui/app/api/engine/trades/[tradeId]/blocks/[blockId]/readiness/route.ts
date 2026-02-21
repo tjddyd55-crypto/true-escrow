@@ -4,6 +4,7 @@ import { computeBlockReadiness, type ReadinessQuestion } from "@/lib/block-quest
 import * as store from "@/lib/transaction-engine/store";
 import * as inMemoryQuestionStore from "@/lib/block-questions/inMemoryQuestionStore";
 import * as inMemoryAnswerStore from "@/lib/block-questions/inMemoryAnswerStore";
+import { evaluateAndApplyBlockPolicy } from "@/lib/transaction-engine/block-policy-evaluator";
 
 export async function GET(
   _request: NextRequest,
@@ -73,8 +74,18 @@ export async function GET(
         return Number(result.rows[0]?.c ?? "0") > 0;
       },
     });
-
-    return NextResponse.json({ ok: true, data: readiness });
+    const policy = await evaluateAndApplyBlockPolicy({ tradeId, blockId });
+    const block = store.getBlockById(blockId);
+    return NextResponse.json({
+      ok: true,
+      data: {
+        ...readiness,
+        status: block?.status ?? null,
+        approvalMode: block?.approvalMode ?? null,
+        dueDate: block?.dueDate ?? null,
+        policy,
+      },
+    });
   } catch (e: unknown) {
     const message = e instanceof Error ? e.message : "Failed to check readiness";
     return NextResponse.json({ ok: false, error: message }, { status: 500 });

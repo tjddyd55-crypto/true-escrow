@@ -6,6 +6,9 @@ import type {
   Transaction,
   TransactionGraph,
   Block,
+  BlockStatus,
+  ApprovalMode,
+  BlockExtension,
   ApprovalPolicy,
   BlockApprover,
   WorkRule,
@@ -16,6 +19,7 @@ import type {
   WorkItemStatus,
 } from "./types";
 import { appendLog } from "./log";
+import { recordAuditEvent } from "./audit";
 import { addDays, daysBetween } from "./dateUtils";
 import crypto from "crypto";
 import fs from "fs";
@@ -28,6 +32,9 @@ let approvalPolicies: ApprovalPolicy[] = [];
 let blockApprovers: BlockApprover[] = [];
 let workRules: WorkRule[] = [];
 let workItems: WorkItem[] = [];
+
+const DEFAULT_APPROVAL_MODE: ApprovalMode = "MANUAL_REVIEW_REQUIRED";
+const DEFAULT_REVIEW_TIMEOUT_HOURS = 48;
 
 const DATA_FILE =
   process.env.TRANSACTION_ENGINE_DATA_FILE ||
@@ -53,6 +60,7 @@ function migrateLoadedData(): void {
       (block as Block).startDate = base;
       (block as Block).endDate = addDays(base, 6);
     }
+    Object.assign(block, normalizeBlockPolicyFields(block, tx?.status));
   });
   ensureUniqueWorkRuleIds();
 }
@@ -137,6 +145,30 @@ function findTransaction(id: string): Transaction | undefined {
 function isDraft(transactionId: string): boolean {
   const tx = findTransaction(transactionId);
   return tx?.status === "DRAFT";
+}
+
+function deriveDefaultBlockStatus(block: Block, txStatus?: TransactionStatus): BlockStatus {
+  if (txStatus === "COMPLETED") return "APPROVED";
+  return block.isActive ? "IN_PROGRESS" : "IN_PROGRESS";
+}
+
+function normalizeBlockPolicyFields(block: Block, txStatus?: TransactionStatus): Block {
+  const existingDueDate = (block as Block & { dueDate?: string }).dueDate;
+  const approvalMode = (block as Block & { approvalMode?: ApprovalMode }).approvalMode ?? DEFAULT_APPROVAL_MODE;
+  const reviewTimeoutHoursRaw = (block as Block & { reviewTimeoutHours?: number }).reviewTimeoutHours;
+  const status = (block as Block & { status?: BlockStatus }).status ?? deriveDefaultBlockStatus(block, txStatus);
+  const extensions = ((block as Block & { extensions?: BlockExtension[] }).extensions ?? []) as BlockExtension[];
+  return {
+    ...block,
+    dueDate: existingDueDate ?? block.endDate,
+    approvalMode,
+    reviewTimeoutHours:
+      typeof reviewTimeoutHoursRaw === "number" && Number.isFinite(reviewTimeoutHoursRaw)
+        ? reviewTimeoutHoursRaw
+        : DEFAULT_REVIEW_TIMEOUT_HOURS,
+    status,
+    extensions,
+  };
 }
 
 // CRUD Operations
@@ -313,9 +345,14 @@ export function addBlockWithAutoSplit(
     title: options.title ?? `Block ${existing.length + 1}`,
     startDate: newBlockStart,
     endDate: originalEnd,
+    dueDate: originalEnd,
     orderIndex: longest.orderIndex + 1,
     approvalPolicyId: newPolicy.id,
     isActive: false,
+    approvalMode: DEFAULT_APPROVAL_MODE,
+    reviewTimeoutHours: DEFAULT_REVIEW_TIMEOUT_HOURS,
+    status: "IN_PROGRESS",
+    extensions: [],
   };
   const newApprover: BlockApprover = {
     id: generateId(),
@@ -325,7 +362,8 @@ export function addBlockWithAutoSplit(
   };
   const updatedBlocks: Block[] = existing.map((b) => {
     if (b.id === longest.id) {
-      return { ...b, endDate: mid };
+      const nextDueDate = b.dueDate === b.endDate ? mid : b.dueDate;
+      return { ...b, endDate: mid, dueDate: nextDueDate };
     }
     if (b.orderIndex > longest.orderIndex) {
       return { ...b, orderIndex: b.orderIndex + 1 };
@@ -358,19 +396,20 @@ export function listTransactions(): Transaction[] {
 }
 
 export function saveTransactionGraph(graph: TransactionGraph): void {
+  const normalizedBlocks = graph.blocks.map((b) => normalizeBlockPolicyFields(b, graph.transaction.status));
   // Idempotency: no duplicate ids in graph
-  const blockIds = new Set(graph.blocks.map((b) => b.id));
-  if (blockIds.size !== graph.blocks.length) throw new Error("Duplicate blocks detected");
+  const blockIds = new Set(normalizedBlocks.map((b) => b.id));
+  if (blockIds.size !== normalizedBlocks.length) throw new Error("Duplicate blocks detected");
   const policyIds = new Set(graph.approvalPolicies.map((p) => p.id));
   if (policyIds.size !== graph.approvalPolicies.length) throw new Error("Duplicate approvalPolicies detected");
   const approverIds = new Set(graph.blockApprovers.map((a) => a.id));
   if (approverIds.size !== graph.blockApprovers.length) throw new Error("Duplicate blockApprovers detected");
   // Replace only: remove this graph's entities, then assign graph's (no append/merge)
   const txId = graph.transaction.id;
-  const blockIdList = graph.blocks.map((b) => b.id);
-  const period = recomputeTradePeriod(graph.blocks);
+  const blockIdList = normalizedBlocks.map((b) => b.id);
+  const period = recomputeTradePeriod(normalizedBlocks);
   const normalizedTransaction =
-    graph.blocks.length > 0
+    normalizedBlocks.length > 0
       ? {
           ...graph.transaction,
           startDate: period.startDate ?? graph.transaction.startDate,
@@ -385,7 +424,7 @@ export function saveTransactionGraph(graph: TransactionGraph): void {
     transactions = [...transactions, normalizedTransaction];
   }
 
-  blocks = [...blocks.filter((b) => b.transactionId !== txId), ...graph.blocks];
+  blocks = [...blocks.filter((b) => b.transactionId !== txId), ...normalizedBlocks];
 
   const graphPolicyIds = new Set(graph.approvalPolicies.map((p) => p.id));
   approvalPolicies = [...approvalPolicies.filter((p) => !graphPolicyIds.has(p.id)), ...graph.approvalPolicies];
@@ -413,6 +452,9 @@ export function activateTransaction(id: string): Transaction {
   if (txBlocks.length > 0) {
     const firstBlock = txBlocks[0];
     firstBlock.isActive = true;
+    if (firstBlock.status === "APPROVED" || firstBlock.status === "CANCELLED") {
+      firstBlock.status = "IN_PROGRESS";
+    }
     appendLog(id, "ADMIN", "BLOCK_ACTIVATED", { blockId: firstBlock.id });
   }
 
@@ -442,7 +484,12 @@ export function updateBlock(id: string, patch: Partial<Block>): Block {
     }
   }
 
+  const dueDateFollowsEndDate = block.dueDate === block.endDate;
   Object.assign(block, patch);
+  if (patch.endDate !== undefined && patch.dueDate === undefined && dueDateFollowsEndDate) {
+    block.dueDate = patch.endDate;
+  }
+  Object.assign(block, normalizeBlockPolicyFields(block, findTransaction(block.transactionId)?.status));
   recalculateTransactionRangeFromBlocks(block.transactionId);
   saveToFile();
   return block;
@@ -457,7 +504,18 @@ function blocksOverlap(
   return aStart <= bEnd && bStart <= aEnd;
 }
 
-export function addBlock(transactionId: string, block: Omit<Block, "id" | "transactionId" | "isActive">): Block {
+type AddBlockInput = Omit<
+  Block,
+  "id" | "transactionId" | "isActive" | "dueDate" | "approvalMode" | "reviewTimeoutHours" | "status" | "extensions"
+> & {
+  dueDate?: string;
+  approvalMode?: ApprovalMode;
+  reviewTimeoutHours?: number;
+  status?: BlockStatus;
+  extensions?: BlockExtension[];
+};
+
+export function addBlock(transactionId: string, block: AddBlockInput): Block {
   if (!isDraft(transactionId)) {
     throw new Error("Blocks can only be added in DRAFT status");
   }
@@ -477,12 +535,12 @@ export function addBlock(transactionId: string, block: Omit<Block, "id" | "trans
     throw new Error("Block startDate must be before or equal to endDate");
   }
 
-  const newBlock: Block = {
+  const newBlock: Block = normalizeBlockPolicyFields({
     ...block,
     id: generateId(),
     transactionId,
     isActive: false,
-  };
+  } as Block, tx.status);
   blocks.push(newBlock);
   recalculateTransactionRangeFromBlocks(transactionId);
   appendLog(transactionId, "ADMIN", "BLOCK_ADDED", { blockId: newBlock.id });
@@ -507,12 +565,16 @@ export function splitBlock(blockId: string, splitDateIso: string): { block1: Blo
     ...block,
     id: generateId(),
     endDate: block1End,
+    dueDate: block.dueDate === block.endDate ? block1End : block.dueDate,
   };
   const block2: Block = {
     ...block,
     id: generateId(),
     startDate: splitDateIso,
     orderIndex: block.orderIndex + 1,
+    dueDate: block.endDate,
+    status: "IN_PROGRESS",
+    extensions: [],
   };
 
   blocks
@@ -720,6 +782,51 @@ export function rejectWorkItem(itemId: string): WorkItem {
   return item;
 }
 
+function activateNextBlockOrComplete(transactionId: string, orderIndex: number): void {
+  const txBlocks = blocks
+    .filter((b) => b.transactionId === transactionId)
+    .sort((a, b) => a.orderIndex - b.orderIndex);
+  const nextBlock = txBlocks.find((b) => b.orderIndex > orderIndex);
+  if (nextBlock) {
+    nextBlock.isActive = true;
+    if (
+      nextBlock.status !== "APPROVED" &&
+      nextBlock.status !== "CANCELLED" &&
+      nextBlock.status !== "DISPUTED" &&
+      nextBlock.status !== "REJECTED"
+    ) {
+      nextBlock.status = "IN_PROGRESS";
+    }
+    appendLog(transactionId, "ADMIN", "BLOCK_ACTIVATED", { blockId: nextBlock.id });
+    return;
+  }
+  const tx = findTransaction(transactionId);
+  if (tx) {
+    tx.status = "COMPLETED";
+    appendLog(transactionId, "ADMIN", "TRANSACTION_COMPLETED");
+  }
+}
+
+export function submitBlock(blockId: string): Block {
+  const block = blocks.find((b) => b.id === blockId);
+  if (!block) throw new Error("Block not found");
+  if (!block.isActive) throw new Error("Only active blocks can be submitted");
+  if (!["IN_PROGRESS", "OVERDUE", "EXTENDED"].includes(block.status)) {
+    throw new Error("Only in-progress blocks can be submitted");
+  }
+  block.status = "SUBMITTED";
+  block.submittedAt = new Date().toISOString();
+  recordAuditEvent({
+    transactionId: block.transactionId,
+    blockId,
+    action: "SUBMIT",
+    actor: "SELLER",
+    meta: { status: block.status, approvalMode: block.approvalMode },
+  });
+  saveToFile();
+  return block;
+}
+
 export function approveBlock(blockId: string): Block {
   const block = blocks.find((b) => b.id === blockId);
   if (!block) {
@@ -728,28 +835,143 @@ export function approveBlock(blockId: string): Block {
   if (!block.isActive) {
     throw new Error("Only active blocks can be approved");
   }
-
-  block.isActive = false;
-  appendLog(block.transactionId, "BUYER", "BLOCK_APPROVED", { blockId });
-
-  // Activate next block
-  const txBlocks = blocks
-    .filter((b) => b.transactionId === block.transactionId)
-    .sort((a, b) => a.orderIndex - b.orderIndex);
-  const nextBlock = txBlocks.find((b) => b.orderIndex > block.orderIndex);
-  
-  if (nextBlock) {
-    nextBlock.isActive = true;
-    appendLog(block.transactionId, "ADMIN", "BLOCK_ACTIVATED", { blockId: nextBlock.id });
-  } else {
-    // All blocks completed
-    const tx = findTransaction(block.transactionId);
-    if (tx) {
-      tx.status = "COMPLETED";
-      appendLog(block.transactionId, "ADMIN", "TRANSACTION_COMPLETED");
-    }
+  if (!["SUBMITTED", "REVIEWING", "IN_PROGRESS", "EXTENDED", "OVERDUE"].includes(block.status)) {
+    throw new Error("Block cannot be approved in current status");
   }
 
+  block.isActive = false;
+  block.status = "APPROVED";
+  block.approvedAt = new Date().toISOString();
+  appendLog(block.transactionId, "BUYER", "BLOCK_APPROVED", { blockId });
+  recordAuditEvent({
+    transactionId: block.transactionId,
+    blockId,
+    action: "APPROVE",
+    actor: "BUYER",
+    meta: { status: block.status },
+  });
+
+  activateNextBlockOrComplete(block.transactionId, block.orderIndex);
+
+  saveToFile();
+  return block;
+}
+
+export function rejectBlock(blockId: string, reason?: string): Block {
+  const block = blocks.find((b) => b.id === blockId);
+  if (!block) throw new Error("Block not found");
+  if (!block.isActive) throw new Error("Only active blocks can be rejected");
+  if (!["SUBMITTED", "REVIEWING"].includes(block.status)) {
+    throw new Error("Only submitted blocks can be rejected");
+  }
+  block.status = "REJECTED";
+  block.rejectedAt = new Date().toISOString();
+  block.rejectionReason = reason?.trim() || undefined;
+  recordAuditEvent({
+    transactionId: block.transactionId,
+    blockId,
+    action: "REJECT",
+    actor: "BUYER",
+    meta: { reason: block.rejectionReason },
+  });
+  saveToFile();
+  return block;
+}
+
+export function disputeBlock(blockId: string, reason?: string): Block {
+  const block = blocks.find((b) => b.id === blockId);
+  if (!block) throw new Error("Block not found");
+  if (!block.isActive) throw new Error("Only active blocks can be disputed");
+  block.status = "DISPUTED";
+  block.disputeReason = reason?.trim() || "No response";
+  recordAuditEvent({
+    transactionId: block.transactionId,
+    blockId,
+    action: "DISPUTE",
+    actor: "BUYER",
+    meta: { reason: block.disputeReason },
+  });
+  saveToFile();
+  return block;
+}
+
+export function cancelBlock(blockId: string, reason?: string): Block {
+  const block = blocks.find((b) => b.id === blockId);
+  if (!block) throw new Error("Block not found");
+  block.status = "CANCELLED";
+  block.disputeReason = reason?.trim() || undefined;
+  block.isActive = false;
+  recordAuditEvent({
+    transactionId: block.transactionId,
+    blockId,
+    action: "CANCEL",
+    actor: "ADMIN",
+    meta: { reason },
+  });
+  activateNextBlockOrComplete(block.transactionId, block.orderIndex);
+  saveToFile();
+  return block;
+}
+
+export function extendBlockDueDate(
+  blockId: string,
+  params: { newDueDate: string; decidedBy: "BUYER" | "SELLER"; reason?: string }
+): Block {
+  const block = blocks.find((b) => b.id === blockId);
+  if (!block) throw new Error("Block not found");
+  if (params.newDueDate < block.dueDate) {
+    throw new Error("newDueDate must be after current dueDate");
+  }
+  const extension: BlockExtension = {
+    previousDueDate: block.dueDate,
+    newDueDate: params.newDueDate,
+    decidedBy: params.decidedBy,
+    reason: params.reason?.trim() || undefined,
+    timestamp: new Date().toISOString(),
+  };
+  block.extensions = [...block.extensions, extension];
+  block.dueDate = params.newDueDate;
+  block.status = "EXTENDED";
+  recordAuditEvent({
+    transactionId: block.transactionId,
+    blockId,
+    action: "EXTEND",
+    actor: params.decidedBy,
+    meta: extension,
+  });
+  saveToFile();
+  return block;
+}
+
+export function transitionBlockStatus(
+  blockId: string,
+  nextStatus: BlockStatus,
+  actor: "BUYER" | "SELLER" | "ADMIN",
+  reason?: string
+): Block {
+  const block = blocks.find((b) => b.id === blockId);
+  if (!block) throw new Error("Block not found");
+  if (block.status === nextStatus) return block;
+  const prevStatus = block.status;
+  block.status = nextStatus;
+  if (nextStatus === "APPROVED") {
+    block.approvedAt = new Date().toISOString();
+    block.isActive = false;
+    activateNextBlockOrComplete(block.transactionId, block.orderIndex);
+  }
+  if (nextStatus === "SUBMITTED" && !block.submittedAt) {
+    block.submittedAt = new Date().toISOString();
+  }
+  if (nextStatus === "DISPUTED" && reason) {
+    block.disputeReason = reason;
+  }
+  recordAuditEvent({
+    transactionId: block.transactionId,
+    blockId,
+    action: "AUTO_TRANSITION",
+    actor,
+    meta: { from: prevStatus, to: nextStatus, reason },
+  });
   saveToFile();
   return block;
 }

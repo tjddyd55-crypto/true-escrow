@@ -12,6 +12,8 @@ import type {
   ActivityLog,
   ApproverRole,
   ApprovalPolicyType,
+  ApprovalMode,
+  BlockStatus,
 } from "@/lib/transaction-engine/types";
 import { daysBetween } from "@/lib/transaction-engine/dateUtils";
 import { TransactionCalendar, BLOCK_COLORS } from "@/components/TransactionCalendar";
@@ -28,7 +30,18 @@ export default function TransactionBuilderPage() {
   const [localTxTitle, setLocalTxTitle] = useState<string | undefined>(undefined);
   const [localTxDesc, setLocalTxDesc] = useState<string | undefined>(undefined);
   const [blockQuestionsByBlockId, setBlockQuestionsByBlockId] = useState<Record<string, BlockQuestion[]>>({});
-  const [blockReadinessByBlockId, setBlockReadinessByBlockId] = useState<Record<string, { ready: boolean; missingRequired: Array<{ questionId: string; reason: string }> }>>({});
+  const [blockReadinessByBlockId, setBlockReadinessByBlockId] = useState<
+    Record<
+      string,
+      {
+        ready: boolean;
+        missingRequired: Array<{ questionId: string; reason: string }>;
+        status?: BlockStatus;
+        approvalMode?: ApprovalMode;
+        dueDate?: string;
+      }
+    >
+  >({});
   const { status: saveStatusTxTitle, triggerSave: triggerSaveTxTitle } = useAutoSave();
   const { status: saveStatusTxDesc, triggerSave: triggerSaveTxDesc } = useAutoSave();
   const { getStatus: getBlockSaveStatus, triggerSave: triggerSaveBlock } = useAutoSaveByKey();
@@ -39,6 +52,12 @@ export default function TransactionBuilderPage() {
   const [dropTargetBlockId, setDropTargetBlockId] = useState<string | null>(null);
 
   const APPROVER_ROLES: ApproverRole[] = ["BUYER", "SELLER", "VERIFIER", "ADMIN"];
+  const APPROVAL_MODES: ApprovalMode[] = [
+    "MANUAL_REVIEW_REQUIRED",
+    "AUTO_APPROVE_THEN_RELEASE",
+    "AUTO_DISPUTE_IF_NO_RESPONSE",
+    "AUTO_RELEASE",
+  ];
 
   useEffect(() => {
     if (transactionId) {
@@ -389,16 +408,26 @@ export default function TransactionBuilderPage() {
     }
   }
 
-  async function approveBlock(blockId: string) {
+  async function runBlockAction(
+    blockId: string,
+    action: "submit" | "approve" | "reject" | "extend" | "dispute" | "cancel",
+    payload?: Record<string, unknown>
+  ) {
     try {
-      const res = await fetch(`/api/engine/blocks/${blockId}/approve`, {
+      const res = await fetch(`/api/engine/blocks/${blockId}/${action}`, {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: payload ? JSON.stringify(payload) : undefined,
       });
       if (res.ok) {
         fetchData();
+        await fetchBlockReadiness(blockId);
+      } else {
+        const err = await res.json().catch(() => ({}));
+        alert(err.error || `${action} failed`);
       }
     } catch (error) {
-      console.error("Failed to approve block:", error);
+      console.error(`Failed to ${action} block:`, error);
     }
   }
 
@@ -502,6 +531,18 @@ export default function TransactionBuilderPage() {
     : "Not set";
 
   const activeBlock = graph.blocks.find((b) => b.isActive);
+
+  const statusColorByBlockStatus: Record<BlockStatus, string> = {
+    IN_PROGRESS: "#2563eb",
+    SUBMITTED: "#0ea5e9",
+    REVIEWING: "#0ea5e9",
+    APPROVED: "#16a34a",
+    REJECTED: "#ef4444",
+    EXTENDED: "#f59e0b",
+    DISPUTED: "#dc2626",
+    OVERDUE: "#b45309",
+    CANCELLED: "#6b7280",
+  };
 
   return (
     <main className="max-w-6xl mx-auto px-4 py-6">
@@ -695,6 +736,8 @@ export default function TransactionBuilderPage() {
                 const canApproveByQuestions = readiness?.ready === true;
                 const approvalReason =
                   readiness?.missingRequired?.[0]?.reason ?? "필수 질문 답변이 필요합니다.";
+                const currentStatus = readiness?.status ?? block.status;
+                const hasAttachmentQuestion = (blockQuestionsByBlockId[block.id] ?? []).some((q) => Boolean(q.allow_attachment));
                 const blockColor = BLOCK_COLORS[blockIndex % BLOCK_COLORS.length];
                 const isFirst = blockIndex === 0;
                 const isLast = blockIndex === graph.blocks.length - 1;
@@ -803,10 +846,39 @@ export default function TransactionBuilderPage() {
                                   ({daysBetween(block.startDate, block.endDate)} days)
                                 </span>
                               </div>
+                              <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
+                                <label style={{ fontSize: "0.8rem", color: "#374151" }}>Due</label>
+                                <input
+                                  type="date"
+                                  value={block.dueDate}
+                                  onChange={(e) => updateBlock(block.id, { dueDate: e.target.value })}
+                                  style={{ padding: 6, minHeight: 40, border: "1px solid #e0e0e0", borderRadius: 6 }}
+                                />
+                                <label style={{ fontSize: "0.8rem", color: "#374151" }}>Mode</label>
+                                <select
+                                  value={block.approvalMode}
+                                  onChange={(e) => updateBlock(block.id, { approvalMode: e.target.value as ApprovalMode })}
+                                  style={{ padding: 6, minHeight: 40, border: "1px solid #e0e0e0", borderRadius: 6 }}
+                                >
+                                  {APPROVAL_MODES.map((mode) => (
+                                    <option key={mode} value={mode} disabled={mode === "AUTO_RELEASE" && hasAttachmentQuestion}>
+                                      {mode}
+                                    </option>
+                                  ))}
+                                </select>
+                                <label style={{ fontSize: "0.8rem", color: "#374151" }}>Timeout(h)</label>
+                                <input
+                                  type="number"
+                                  min={1}
+                                  value={block.reviewTimeoutHours ?? 48}
+                                  onChange={(e) => updateBlock(block.id, { reviewTimeoutHours: Number(e.target.value || 48) })}
+                                  style={{ padding: 6, minHeight: 40, border: "1px solid #e0e0e0", borderRadius: 6, width: 100 }}
+                                />
+                              </div>
                             </>
                           ) : (
                             <span style={{ fontSize: "0.9rem", color: "#666" }}>
-                              {block.startDate} → {block.endDate} ({daysBetween(block.startDate, block.endDate)} days)
+                              {block.startDate} → {block.endDate} ({daysBetween(block.startDate, block.endDate)} days), due {block.dueDate}
                             </span>
                           )}
                         </div>
@@ -846,13 +918,13 @@ export default function TransactionBuilderPage() {
                           style={{
                             padding: "4px 12px",
                             borderRadius: 4,
-                            backgroundColor: block.isActive ? "#00b894" : "#f39c12",
+                            backgroundColor: statusColorByBlockStatus[currentStatus],
                             color: "white",
                             fontSize: "0.85rem",
                             fontWeight: "600",
                           }}
                         >
-                          {block.isActive ? t.active : t.locked}
+                          {currentStatus}
                         </span>
                         {isDraft && graph.blocks.length > 1 && (
                           <button
@@ -1074,26 +1146,92 @@ export default function TransactionBuilderPage() {
                       }}
                     />
 
+                    {block.extensions.length > 0 && (
+                      <details style={{ marginTop: 12, border: "1px solid #e5e7eb", borderRadius: 8, padding: 10 }}>
+                        <summary style={{ cursor: "pointer", fontWeight: 600 }}>연장 이력 ({block.extensions.length})</summary>
+                        <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 6 }}>
+                          {block.extensions.map((ext, idx) => (
+                            <div key={`${block.id}-ext-${idx}`} style={{ fontSize: "0.85rem", color: "#374151" }}>
+                              {ext.previousDueDate} → {ext.newDueDate} ({ext.decidedBy}) {ext.reason ? `- ${ext.reason}` : ""}
+                            </div>
+                          ))}
+                        </div>
+                      </details>
+                    )}
+
                     {block.isActive && (
-                      <div style={{ marginTop: 15 }}>
-                        <button
-                          onClick={() => approveBlock(block.id)}
-                          disabled={!canApproveByQuestions}
-                          title={canApproveByQuestions ? "" : approvalReason}
-                          style={{
-                            width: "100%",
-                            padding: "8px 16px",
-                            minHeight: 40,
-                            backgroundColor: canApproveByQuestions ? "#00b894" : "#9ca3af",
-                            color: "white",
-                            border: "none",
-                            borderRadius: 4,
-                            cursor: canApproveByQuestions ? "pointer" : "not-allowed",
-                            fontWeight: "600",
-                          }}
-                        >
-                          {t.approveBlock}
-                        </button>
+                      <div className="flex flex-wrap gap-2 mt-3">
+                        {["IN_PROGRESS", "OVERDUE", "EXTENDED"].includes(currentStatus) && (
+                          <button
+                            onClick={() => runBlockAction(block.id, "submit")}
+                            disabled={!canApproveByQuestions}
+                            title={canApproveByQuestions ? "" : approvalReason}
+                            style={{
+                              padding: "8px 12px",
+                              minHeight: 40,
+                              backgroundColor: canApproveByQuestions ? "#2563eb" : "#9ca3af",
+                              color: "white",
+                              border: "none",
+                              borderRadius: 6,
+                              cursor: canApproveByQuestions ? "pointer" : "not-allowed",
+                            }}
+                          >
+                            Submit
+                          </button>
+                        )}
+                        {["SUBMITTED", "REVIEWING"].includes(currentStatus) && (
+                          <>
+                            <button
+                              onClick={() => runBlockAction(block.id, "approve")}
+                              disabled={!canApproveByQuestions}
+                              style={{ padding: "8px 12px", minHeight: 40, backgroundColor: "#16a34a", color: "white", border: "none", borderRadius: 6 }}
+                            >
+                              {t.approveBlock}
+                            </button>
+                            <button
+                              onClick={() => {
+                                const reason = prompt("Reject reason") || "";
+                                void runBlockAction(block.id, "reject", { reason });
+                              }}
+                              style={{ padding: "8px 12px", minHeight: 40, backgroundColor: "#ef4444", color: "white", border: "none", borderRadius: 6 }}
+                            >
+                              Reject
+                            </button>
+                          </>
+                        )}
+                        {["IN_PROGRESS", "OVERDUE", "EXTENDED", "SUBMITTED", "REVIEWING"].includes(currentStatus) && (
+                          <>
+                            <button
+                              onClick={() => {
+                                const reason = prompt("Dispute reason") || "";
+                                void runBlockAction(block.id, "dispute", { reason });
+                              }}
+                              style={{ padding: "8px 12px", minHeight: 40, backgroundColor: "#dc2626", color: "white", border: "none", borderRadius: 6 }}
+                            >
+                              Dispute
+                            </button>
+                            <button
+                              onClick={() => {
+                                const newDueDate = prompt("New due date (YYYY-MM-DD)", block.dueDate);
+                                if (!newDueDate) return;
+                                const reason = prompt("Extension reason") || "";
+                                void runBlockAction(block.id, "extend", { newDueDate, reason, decidedBy: "BUYER" });
+                              }}
+                              style={{ padding: "8px 12px", minHeight: 40, backgroundColor: "#f59e0b", color: "white", border: "none", borderRadius: 6 }}
+                            >
+                              Extend
+                            </button>
+                            <button
+                              onClick={() => {
+                                const reason = prompt("Cancel reason") || "";
+                                void runBlockAction(block.id, "cancel", { reason });
+                              }}
+                              style={{ padding: "8px 12px", minHeight: 40, backgroundColor: "#6b7280", color: "white", border: "none", borderRadius: 6 }}
+                            >
+                              Cancel
+                            </button>
+                          </>
+                        )}
                       </div>
                     )}
                   </div>

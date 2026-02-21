@@ -67,9 +67,14 @@ export function buildTransactionFromTemplateSpec(
         title: blockSpec.title_key,
         startDate,
         endDate,
+        dueDate: endDate,
         orderIndex: blockSpec.sequence,
         approvalPolicyId: policyId,
         isActive: false,
+        approvalMode: "MANUAL_REVIEW_REQUIRED",
+        reviewTimeoutHours: 48,
+        status: "IN_PROGRESS",
+        extensions: [],
       });
       blockApprovers.push({
         id: crypto.randomUUID(),
