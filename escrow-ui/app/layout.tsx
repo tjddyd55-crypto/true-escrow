@@ -52,6 +52,28 @@ export default function RootLayout({
           </Link>
           <nav style={{ display: "flex", gap: 20, alignItems: "center" }}>
             <Link
+              href="/dashboard"
+              style={{
+                color: "#0070f3",
+                textDecoration: "none",
+                fontWeight: 500,
+                fontSize: "0.95rem",
+              }}
+            >
+              Dashboard
+            </Link>
+            <Link
+              href="/trades/new"
+              style={{
+                color: "#0070f3",
+                textDecoration: "none",
+                fontWeight: 500,
+                fontSize: "0.95rem",
+              }}
+            >
+              New Trade
+            </Link>
+            <Link
               href="/transaction/new"
               style={{
                 color: "#0070f3",
