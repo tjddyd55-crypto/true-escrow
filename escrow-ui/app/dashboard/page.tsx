@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 
 type Trade = {
@@ -66,8 +66,6 @@ export default function DashboardPage() {
   }
 
   if (loading) return <main className="max-w-4xl mx-auto p-6">Loading...</main>;
-
-  const allTrades = useMemo(() => [...createdTrades, ...participantTrades], [createdTrades, participantTrades]);
 
   return (
     <div>
