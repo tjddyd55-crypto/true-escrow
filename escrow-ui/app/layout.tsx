@@ -63,17 +63,6 @@ export default function RootLayout({
               Dashboard
             </Link>
             <Link
-              href="/trades/new"
-              style={{
-                color: "#0070f3",
-                textDecoration: "none",
-                fontWeight: 500,
-                fontSize: "0.95rem",
-              }}
-            >
-              New Trade
-            </Link>
-            <Link
               href="/transaction/new"
               style={{
                 color: "#0070f3",
