@@ -2,12 +2,23 @@ export type MvpRole = "BUYER" | "SELLER" | "VERIFIER";
 export type InviteType = "EMAIL" | "PHONE";
 export type InviteStatus = "PENDING" | "ACCEPTED" | "DECLINED";
 export type ParticipantStatus = "INVITED" | "ACCEPTED" | "DECLINED";
-export type ConditionType = "CHECK" | "FILE";
-export type ConditionStatus = "PENDING" | "CONFIRMED";
-export type BlockStatus = "DRAFT" | "OPEN" | "FINAL_APPROVED";
+export type ConditionType = "CHECK" | "FILE_UPLOAD" | "TEXT" | "NUMBER" | "DATE";
+export type ConditionStatus = "PENDING" | "SUBMITTED" | "CONFIRMED" | "REJECTED";
+export type BlockStatus =
+  | "DRAFT"
+  | "IN_PROGRESS"
+  | "READY_FOR_FINAL_APPROVAL"
+  | "APPROVED"
+  | "DISPUTED"
+  | "ON_HOLD";
+export type TradeStatus = "DRAFT" | "ACTIVE" | "COMPLETED";
+export type ApprovalType = "MANUAL" | "SIMPLE";
 export type AuditAction =
   | "INVITE_CREATED"
   | "INVITE_ACCEPTED"
+  | "CONDITION_SUBMITTED"
+  | "CONDITION_REJECTED"
+  | "CONDITION_RESUBMITTED"
   | "CONDITION_CONFIRMED"
   | "BLOCK_FINAL_APPROVED";
 
@@ -24,6 +35,7 @@ export type MvpTrade = {
   title: string;
   description?: string | null;
   createdBy: string;
+  status: TradeStatus;
   createdAt: string;
 };
 
@@ -51,8 +63,12 @@ export type MvpBlock = {
   id: string;
   tradeId: string;
   title: string;
-  dueAt: string;
+  startDate?: string | null;
+  dueDate: string;
+  approvalType: ApprovalType;
   finalApproverRole: MvpRole;
+  watchers: MvpRole[];
+  extendedDueDate?: string | null;
   status: BlockStatus;
   createdAt: string;
 };
@@ -65,7 +81,13 @@ export type MvpCondition = {
   type: ConditionType;
   required: boolean;
   assignedRole: MvpRole;
+  confirmerRole: MvpRole;
   status: ConditionStatus;
+  rejectReason?: string | null;
+  rejectedBy?: string | null;
+  rejectedAt?: string | null;
+  resubmittedAt?: string | null;
+  submittedAt?: string | null;
   confirmedBy?: string | null;
   confirmedAt?: string | null;
   createdAt: string;

@@ -35,7 +35,7 @@ export default function TransactionsPage() {
       ) : list.length === 0 ? (
         <p style={{ color: "#666" }}>
           No transactions yet.{" "}
-          <Link href="/transaction/new" style={{ color: "#0070f3" }}>
+          <Link href="/transactions/new" style={{ color: "#0070f3" }}>
             Create Transaction
           </Link>
         </p>

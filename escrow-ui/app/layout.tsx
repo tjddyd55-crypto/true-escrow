@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { I18nProvider } from "@/lib/i18n/provider";
+import AuthNav from "@/components/AuthNav";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -50,7 +51,7 @@ export default function RootLayout({
           >
             true-escrow
           </Link>
-          <nav style={{ display: "flex", gap: 20, alignItems: "center" }}>
+          <nav style={{ display: "flex", gap: 20, alignItems: "center", flexWrap: "wrap", flex: 1 }}>
             <Link
               href="/dashboard"
               style={{
@@ -61,17 +62,6 @@ export default function RootLayout({
               }}
             >
               Dashboard
-            </Link>
-            <Link
-              href="/transaction/new"
-              style={{
-                color: "#0070f3",
-                textDecoration: "none",
-                fontWeight: 500,
-                fontSize: "0.95rem",
-              }}
-            >
-              Create Transaction
             </Link>
             <Link
               href="/transactions"
@@ -85,6 +75,7 @@ export default function RootLayout({
               Transactions
             </Link>
           </nav>
+          <AuthNav />
         </header>
         <I18nProvider>{children}</I18nProvider>
       </body>

@@ -11,10 +11,17 @@ export async function PATCH(
     const userId = await getSessionUserId();
     if (!userId) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
     const { tradeId, blockId } = await params;
-    const body = (await request.json()) as { title?: string; dueAt?: string; finalApproverRole?: MvpRole };
-    if (!body.title?.trim() || !body.dueAt || !body.finalApproverRole) {
+    const body = (await request.json()) as {
+      title?: string;
+      startDate?: string | null;
+      dueDate?: string;
+      approvalType?: "MANUAL" | "SIMPLE";
+      finalApproverRole?: MvpRole;
+      watchers?: MvpRole[];
+    };
+    if (!body.title?.trim() || !body.dueDate || !body.finalApproverRole) {
       return NextResponse.json(
-        { ok: false, error: "title, dueAt, finalApproverRole are required" },
+        { ok: false, error: "title, dueDate, finalApproverRole are required" },
         { status: 400 }
       );
     }
@@ -23,8 +30,11 @@ export async function PATCH(
       blockId,
       actorUserId: userId,
       title: body.title.trim(),
-      dueAt: body.dueAt,
+      startDate: body.startDate ?? null,
+      dueDate: body.dueDate,
+      approvalType: body.approvalType ?? "MANUAL",
       finalApproverRole: body.finalApproverRole,
+      watchers: body.watchers ?? [],
     });
     return NextResponse.json({ ok: true, data: block });
   } catch (e: unknown) {

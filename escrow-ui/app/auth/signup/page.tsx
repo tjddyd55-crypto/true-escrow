@@ -27,7 +27,11 @@ export default function SignupPage() {
         setError(json.error ?? "회원가입에 실패했습니다.");
         return;
       }
-      router.push("/dashboard");
+      const next =
+        typeof window !== "undefined"
+          ? new URLSearchParams(window.location.search).get("next")
+          : null;
+      router.push(next && next.startsWith("/") ? next : "/dashboard");
     } finally {
       setLoading(false);
     }

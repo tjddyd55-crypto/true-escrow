@@ -14,6 +14,7 @@ export async function POST(
     return NextResponse.json({ ok: true, data: block });
   } catch (e: unknown) {
     const message = e instanceof Error ? e.message : "Failed to final-approve block";
-    return NextResponse.json({ ok: false, error: message }, { status: 400 });
+    const status = message.includes("Only final approver role") ? 403 : 400;
+    return NextResponse.json({ ok: false, error: message }, { status });
   }
 }

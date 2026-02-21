@@ -17,6 +17,7 @@ export async function POST(
       type?: ConditionType;
       required?: boolean;
       assignedRole?: MvpRole;
+      confirmerRole?: MvpRole;
     };
     if (!body.title?.trim() || !body.type || !body.assignedRole) {
       return NextResponse.json(
@@ -31,8 +32,9 @@ export async function POST(
       title: body.title.trim(),
       description: body.description,
       type: body.type,
-      required: Boolean(body.required),
+      required: body.required ?? true,
       assignedRole: body.assignedRole,
+      confirmerRole: body.confirmerRole ?? body.assignedRole,
     });
     return NextResponse.json({ ok: true, data: condition });
   } catch (e: unknown) {

@@ -134,6 +134,7 @@ export async function createTrade(params: { title: string; description?: string;
       title: params.title.trim(),
       description: params.description?.trim() || null,
       createdBy: params.createdBy,
+      status: "DRAFT",
       createdAt: nowIso(),
     };
     memory.trades.push(trade);
@@ -152,8 +153,8 @@ export async function createTrade(params: { title: string; description?: string;
   return withTransaction(async (client) => {
     const tradeId = crypto.randomUUID();
     await client.query(
-      `INSERT INTO escrow_mvp_trades (id, title, description, created_by, created_at)
-       VALUES ($1, $2, $3, $4, now())`,
+      `INSERT INTO escrow_mvp_trades (id, title, description, created_by, status, created_at)
+       VALUES ($1, $2, $3, $4, 'DRAFT', now())`,
       [tradeId, params.title.trim(), params.description?.trim() || null, params.createdBy]
     );
     await client.query(
@@ -162,8 +163,8 @@ export async function createTrade(params: { title: string; description?: string;
        VALUES ($1, $2, $3, 'BUYER', 'ACCEPTED', 'EMAIL', '', now())`,
       [crypto.randomUUID(), tradeId, params.createdBy]
     );
-    const row = await client.query<{ id: string; title: string; description: string | null; created_by: string; created_at: string }>(
-      `SELECT id, title, description, created_by, created_at FROM escrow_mvp_trades WHERE id = $1`,
+    const row = await client.query<{ id: string; title: string; description: string | null; created_by: string; status: "DRAFT" | "ACTIVE" | "COMPLETED"; created_at: string }>(
+      `SELECT id, title, description, created_by, status, created_at FROM escrow_mvp_trades WHERE id = $1`,
       [tradeId]
     );
     const r = row.rows[0];
@@ -172,6 +173,7 @@ export async function createTrade(params: { title: string; description?: string;
       title: r.title,
       description: r.description,
       createdBy: r.created_by,
+      status: r.status,
       createdAt: r.created_at,
     } as MvpTrade;
   });
@@ -184,8 +186,8 @@ export async function listMyTrades(userId: string): Promise<MvpTrade[]> {
     );
     return memory.trades.filter((t) => t.createdBy === userId || participantTradeIds.has(t.id));
   }
-  const rows = await query<{ id: string; title: string; description: string | null; created_by: string; created_at: string }>(
-    `SELECT DISTINCT t.id, t.title, t.description, t.created_by, t.created_at
+  const rows = await query<{ id: string; title: string; description: string | null; created_by: string; status: "DRAFT" | "ACTIVE" | "COMPLETED"; created_at: string }>(
+    `SELECT DISTINCT t.id, t.title, t.description, t.created_by, t.status, t.created_at
      FROM escrow_mvp_trades t
      LEFT JOIN escrow_mvp_trade_participants p ON p.trade_id = t.id
      WHERE t.created_by = $1 OR (p.user_id = $1 AND p.status = 'ACCEPTED')
@@ -197,6 +199,7 @@ export async function listMyTrades(userId: string): Promise<MvpTrade[]> {
     title: r.title,
     description: r.description,
     createdBy: r.created_by,
+    status: r.status,
     createdAt: r.created_at,
   }));
 }
@@ -213,6 +216,21 @@ async function getParticipantRole(tradeId: string, userId: string): Promise<MvpR
     [tradeId, userId]
   );
   return result.rows[0]?.role ?? null;
+}
+
+function hasAllRequiredConfirmed(conditions: MvpCondition[]): boolean {
+  if (conditions.length === 0) return false;
+  const requiredConditions = conditions.filter((c) => c.required);
+  if (requiredConditions.length === 0) return false;
+  return requiredConditions.every((c) => c.status === "CONFIRMED");
+}
+
+function ensureBlockStatusFromConditions(block: MvpBlock, conditions: MvpCondition[]): MvpBlock {
+  if (block.status === "APPROVED") return block;
+  if (hasAllRequiredConfirmed(conditions)) {
+    return { ...block, status: "READY_FOR_FINAL_APPROVAL" };
+  }
+  return { ...block, status: "IN_PROGRESS" };
 }
 
 export async function getTradeDetail(tradeId: string, userId: string) {
@@ -246,12 +264,16 @@ export async function getTradeDetail(tradeId: string, userId: string) {
       id: string;
       trade_id: string;
       title: string;
-      due_at: string;
+      start_date: string | null;
+      due_date: string;
+      approval_type: "MANUAL" | "SIMPLE";
       final_approver_role: MvpRole;
-      status: "DRAFT" | "OPEN" | "FINAL_APPROVED";
+      watchers: unknown;
+      extended_due_date: string | null;
+      status: "DRAFT" | "IN_PROGRESS" | "READY_FOR_FINAL_APPROVAL" | "APPROVED" | "DISPUTED" | "ON_HOLD";
       created_at: string;
     }>(
-      `SELECT id, trade_id, title, due_at, final_approver_role, status, created_at
+      `SELECT id, trade_id, title, start_date, due_date, approval_type, final_approver_role, watchers, extended_due_date, status, created_at
        FROM escrow_mvp_blocks
        WHERE trade_id = $1
        ORDER BY created_at ASC`,
@@ -265,13 +287,20 @@ export async function getTradeDetail(tradeId: string, userId: string) {
       type: ConditionType;
       required: boolean;
       assigned_role: MvpRole;
-      status: "PENDING" | "CONFIRMED";
+      confirmer_role: MvpRole;
+      status: "PENDING" | "SUBMITTED" | "CONFIRMED" | "REJECTED";
+      reject_reason: string | null;
+      rejected_by: string | null;
+      rejected_at: string | null;
+      resubmitted_at: string | null;
+      submitted_at: string | null;
       confirmed_by: string | null;
       confirmed_at: string | null;
       created_at: string;
     }>(
       `SELECT c.id, c.block_id, c.title, c.description, c.type, c.required,
-              c.assigned_role, c.status, c.confirmed_by, c.confirmed_at, c.created_at
+              c.assigned_role, c.confirmer_role, c.status, c.reject_reason, c.rejected_by, c.rejected_at,
+              c.resubmitted_at, c.submitted_at, c.confirmed_by, c.confirmed_at, c.created_at
        FROM escrow_mvp_conditions c
        JOIN escrow_mvp_blocks b ON b.id = c.block_id
        WHERE b.trade_id = $1
@@ -295,8 +324,12 @@ export async function getTradeDetail(tradeId: string, userId: string) {
       id: r.id,
       tradeId: r.trade_id,
       title: r.title,
-      dueAt: r.due_at,
+      startDate: r.start_date,
+      dueDate: r.due_date,
+      approvalType: r.approval_type,
       finalApproverRole: r.final_approver_role,
+      watchers: Array.isArray(r.watchers) ? (r.watchers as MvpRole[]) : [],
+      extendedDueDate: r.extended_due_date,
       status: r.status,
       createdAt: r.created_at,
     })),
@@ -308,7 +341,13 @@ export async function getTradeDetail(tradeId: string, userId: string) {
       type: r.type,
       required: r.required,
       assignedRole: r.assigned_role,
+      confirmerRole: r.confirmer_role,
       status: r.status,
+      rejectReason: r.reject_reason,
+      rejectedBy: r.rejected_by,
+      rejectedAt: r.rejected_at,
+      resubmittedAt: r.resubmitted_at,
+      submittedAt: r.submitted_at,
       confirmedBy: r.confirmed_by,
       confirmedAt: r.confirmed_at,
       createdAt: r.created_at,
@@ -351,7 +390,7 @@ export async function createInvite(params: {
       tradeId: params.tradeId,
       action: "INVITE_CREATED",
       actorUserId: params.actorUserId,
-      meta: { inviteType: params.inviteType, inviteTarget: params.inviteTarget, role: params.role },
+      meta: { inviteId: invite.id, inviteType: params.inviteType, inviteTarget: params.inviteTarget, role: params.role },
     });
     return invite;
   }
@@ -377,7 +416,7 @@ export async function createInvite(params: {
         crypto.randomUUID(),
         params.tradeId,
         params.actorUserId,
-        { inviteType: params.inviteType, inviteTarget: params.inviteTarget, role: params.role },
+        { inviteId, inviteType: params.inviteType, inviteTarget: params.inviteTarget, role: params.role },
       ]
     );
     return { id: inviteId, tradeId: params.tradeId, participantId, token, status: "PENDING", createdAt: nowIso() } as MvpInvite;
@@ -531,8 +570,11 @@ export async function createBlock(params: {
   tradeId: string;
   actorUserId: string;
   title: string;
-  dueAt: string;
+  startDate?: string | null;
+  dueDate: string;
+  approvalType?: "MANUAL" | "SIMPLE";
   finalApproverRole: MvpRole;
+  watchers?: MvpRole[];
 }) {
   const role = await getParticipantRole(params.tradeId, params.actorUserId);
   if (!role) throw new Error("Only participants can create blocks");
@@ -541,9 +583,12 @@ export async function createBlock(params: {
       id: crypto.randomUUID(),
       tradeId: params.tradeId,
       title: params.title.trim(),
-      dueAt: params.dueAt,
+      startDate: params.startDate ?? null,
+      dueDate: params.dueDate,
+      approvalType: params.approvalType ?? "MANUAL",
       finalApproverRole: params.finalApproverRole,
-      status: "DRAFT",
+      watchers: params.watchers ?? [],
+      status: "IN_PROGRESS",
       createdAt: nowIso(),
     };
     memory.blocks.push(block);
@@ -553,24 +598,41 @@ export async function createBlock(params: {
     id: string;
     trade_id: string;
     title: string;
-    due_at: string;
+    start_date: string | null;
+    due_date: string;
+    approval_type: "MANUAL" | "SIMPLE";
     final_approver_role: MvpRole;
-    status: "DRAFT" | "OPEN" | "FINAL_APPROVED";
+    watchers: unknown;
+    extended_due_date: string | null;
+    status: "DRAFT" | "IN_PROGRESS" | "READY_FOR_FINAL_APPROVAL" | "APPROVED" | "DISPUTED" | "ON_HOLD";
     created_at: string;
   }>(
     `INSERT INTO escrow_mvp_blocks
-     (id, trade_id, title, due_at, final_approver_role, status, created_at)
-     VALUES ($1, $2, $3, $4, $5, 'DRAFT', now())
-     RETURNING id, trade_id, title, due_at, final_approver_role, status, created_at`,
-    [crypto.randomUUID(), params.tradeId, params.title.trim(), params.dueAt, params.finalApproverRole]
+     (id, trade_id, title, start_date, due_date, approval_type, final_approver_role, watchers, status, created_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, 'IN_PROGRESS', now())
+     RETURNING id, trade_id, title, start_date, due_date, approval_type, final_approver_role, watchers, extended_due_date, status, created_at`,
+    [
+      crypto.randomUUID(),
+      params.tradeId,
+      params.title.trim(),
+      params.startDate ?? null,
+      params.dueDate,
+      params.approvalType ?? "MANUAL",
+      params.finalApproverRole,
+      JSON.stringify(params.watchers ?? []),
+    ]
   );
   const row = result.rows[0];
   return {
     id: row.id,
     tradeId: row.trade_id,
     title: row.title,
-    dueAt: row.due_at,
+    startDate: row.start_date,
+    dueDate: row.due_date,
+    approvalType: row.approval_type,
     finalApproverRole: row.final_approver_role,
+    watchers: Array.isArray(row.watchers) ? (row.watchers as MvpRole[]) : [],
+    extendedDueDate: row.extended_due_date,
     status: row.status,
     createdAt: row.created_at,
   } as MvpBlock;
@@ -581,35 +643,54 @@ export async function saveBlockDraft(params: {
   blockId: string;
   actorUserId: string;
   title: string;
-  dueAt: string;
+  startDate?: string | null;
+  dueDate: string;
+  approvalType?: "MANUAL" | "SIMPLE";
   finalApproverRole: MvpRole;
+  watchers?: MvpRole[];
 }) {
   const role = await getParticipantRole(params.tradeId, params.actorUserId);
   if (!role) throw new Error("Only participants can edit blocks");
   if (!isDatabaseConfigured()) {
     const block = memory.blocks.find((b) => b.id === params.blockId && b.tradeId === params.tradeId);
     if (!block) throw new Error("Block not found");
-    if (block.status === "FINAL_APPROVED") throw new Error("Approved block cannot be edited");
+    if (block.status === "APPROVED") throw new Error("Approved block cannot be edited");
     block.title = params.title.trim();
-    block.dueAt = params.dueAt;
+    block.startDate = params.startDate ?? null;
+    block.dueDate = params.dueDate;
+    block.approvalType = params.approvalType ?? "MANUAL";
     block.finalApproverRole = params.finalApproverRole;
-    block.status = "OPEN";
+    block.watchers = params.watchers ?? [];
+    block.status = "IN_PROGRESS";
     return block;
   }
   const updated = await query<{
     id: string;
     trade_id: string;
     title: string;
-    due_at: string;
+    start_date: string | null;
+    due_date: string;
+    approval_type: "MANUAL" | "SIMPLE";
     final_approver_role: MvpRole;
-    status: "DRAFT" | "OPEN" | "FINAL_APPROVED";
+    watchers: unknown;
+    extended_due_date: string | null;
+    status: "DRAFT" | "IN_PROGRESS" | "READY_FOR_FINAL_APPROVAL" | "APPROVED" | "DISPUTED" | "ON_HOLD";
     created_at: string;
   }>(
     `UPDATE escrow_mvp_blocks
-     SET title = $1, due_at = $2, final_approver_role = $3, status = 'OPEN'
-     WHERE id = $4 AND trade_id = $5 AND status <> 'FINAL_APPROVED'
-     RETURNING id, trade_id, title, due_at, final_approver_role, status, created_at`,
-    [params.title.trim(), params.dueAt, params.finalApproverRole, params.blockId, params.tradeId]
+     SET title = $1, start_date = $2, due_date = $3, approval_type = $4, final_approver_role = $5, watchers = $6::jsonb, status = 'IN_PROGRESS'
+     WHERE id = $7 AND trade_id = $8 AND status <> 'APPROVED'
+     RETURNING id, trade_id, title, start_date, due_date, approval_type, final_approver_role, watchers, extended_due_date, status, created_at`,
+    [
+      params.title.trim(),
+      params.startDate ?? null,
+      params.dueDate,
+      params.approvalType ?? "MANUAL",
+      params.finalApproverRole,
+      JSON.stringify(params.watchers ?? []),
+      params.blockId,
+      params.tradeId,
+    ]
   );
   const row = updated.rows[0];
   if (!row) throw new Error("Block not found or cannot be edited");
@@ -617,8 +698,12 @@ export async function saveBlockDraft(params: {
     id: row.id,
     tradeId: row.trade_id,
     title: row.title,
-    dueAt: row.due_at,
+    startDate: row.start_date,
+    dueDate: row.due_date,
+    approvalType: row.approval_type,
     finalApproverRole: row.final_approver_role,
+    watchers: Array.isArray(row.watchers) ? (row.watchers as MvpRole[]) : [],
+    extendedDueDate: row.extended_due_date,
     status: row.status,
     createdAt: row.created_at,
   } as MvpBlock;
@@ -633,6 +718,7 @@ export async function addCondition(params: {
   type: ConditionType;
   required: boolean;
   assignedRole: MvpRole;
+  confirmerRole: MvpRole;
 }) {
   const role = await getParticipantRole(params.tradeId, params.actorUserId);
   if (!role) throw new Error("Only participants can add conditions");
@@ -647,7 +733,13 @@ export async function addCondition(params: {
       type: params.type,
       required: params.required,
       assignedRole: params.assignedRole,
+      confirmerRole: params.confirmerRole,
       status: "PENDING",
+      rejectReason: null,
+      rejectedBy: null,
+      rejectedAt: null,
+      resubmittedAt: null,
+      submittedAt: null,
       confirmedBy: null,
       confirmedAt: null,
       createdAt: nowIso(),
@@ -663,16 +755,22 @@ export async function addCondition(params: {
     type: ConditionType;
     required: boolean;
     assigned_role: MvpRole;
-    status: "PENDING" | "CONFIRMED";
+    confirmer_role: MvpRole;
+    status: "PENDING" | "SUBMITTED" | "CONFIRMED" | "REJECTED";
+    reject_reason: string | null;
+    rejected_by: string | null;
+    rejected_at: string | null;
+    resubmitted_at: string | null;
+    submitted_at: string | null;
     confirmed_by: string | null;
     confirmed_at: string | null;
     created_at: string;
   }>(
     `INSERT INTO escrow_mvp_conditions
-     (id, block_id, title, description, type, required, assigned_role, status, created_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, 'PENDING', now())
-     RETURNING id, block_id, title, description, type, required, assigned_role, status, confirmed_by, confirmed_at, created_at`,
-    [crypto.randomUUID(), params.blockId, params.title.trim(), params.description?.trim() || null, params.type, params.required, params.assignedRole]
+     (id, block_id, title, description, type, required, assigned_role, confirmer_role, status, created_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'PENDING', now())
+     RETURNING id, block_id, title, description, type, required, assigned_role, confirmer_role, status, reject_reason, rejected_by, rejected_at, resubmitted_at, submitted_at, confirmed_by, confirmed_at, created_at`,
+    [crypto.randomUUID(), params.blockId, params.title.trim(), params.description?.trim() || null, params.type, params.required, params.assignedRole, params.confirmerRole]
   );
   const row = inserted.rows[0];
   return {
@@ -683,7 +781,13 @@ export async function addCondition(params: {
     type: row.type,
     required: row.required,
     assignedRole: row.assigned_role,
+    confirmerRole: row.confirmer_role,
     status: row.status,
+    rejectReason: row.reject_reason,
+    rejectedBy: row.rejected_by,
+    rejectedAt: row.rejected_at,
+    resubmittedAt: row.resubmitted_at,
+    submittedAt: row.submitted_at,
     confirmedBy: row.confirmed_by,
     confirmedAt: row.confirmed_at,
     createdAt: row.created_at,
@@ -702,14 +806,23 @@ export async function confirmCondition(params: {
   if (!detail) throw new Error("Trade not found");
   const condition = detail.conditions.find((c) => c.id === params.conditionId && c.blockId === params.blockId);
   if (!condition) throw new Error("Condition not found");
-  if (condition.assignedRole !== actorRole) {
-    throw new Error("Only assigned role can confirm this condition");
+  if (condition.confirmerRole !== actorRole) {
+    throw new Error("Only confirmer role can confirm this condition");
+  }
+  if (condition.status !== "SUBMITTED") {
+    throw new Error("Only submitted condition can be confirmed");
   }
   if (!isDatabaseConfigured()) {
     const target = memory.conditions.find((c) => c.id === params.conditionId)!;
     target.status = "CONFIRMED";
     target.confirmedBy = params.actorUserId;
     target.confirmedAt = nowIso();
+    const block = memory.blocks.find((b) => b.id === params.blockId && b.tradeId === params.tradeId);
+    if (block) {
+      const blockConditions = memory.conditions.filter((c) => c.blockId === block.id);
+      const next = ensureBlockStatusFromConditions(block, blockConditions);
+      Object.assign(block, next);
+    }
     await appendAuditLog({
       tradeId: params.tradeId,
       action: "CONDITION_CONFIRMED",
@@ -726,19 +839,40 @@ export async function confirmCondition(params: {
     type: ConditionType;
     required: boolean;
     assigned_role: MvpRole;
-    status: "PENDING" | "CONFIRMED";
+    confirmer_role: MvpRole;
+    status: "PENDING" | "SUBMITTED" | "CONFIRMED" | "REJECTED";
+    reject_reason: string | null;
+    rejected_by: string | null;
+    rejected_at: string | null;
+    resubmitted_at: string | null;
+    submitted_at: string | null;
     confirmed_by: string | null;
     confirmed_at: string | null;
     created_at: string;
   }>(
     `UPDATE escrow_mvp_conditions
      SET status = 'CONFIRMED', confirmed_by = $1, confirmed_at = now()
-     WHERE id = $2 AND block_id = $3
-     RETURNING id, block_id, title, description, type, required, assigned_role, status, confirmed_by, confirmed_at, created_at`,
+     WHERE id = $2 AND block_id = $3 AND status = 'SUBMITTED'
+     RETURNING id, block_id, title, description, type, required, assigned_role, confirmer_role, status, reject_reason, rejected_by, rejected_at, resubmitted_at, submitted_at, confirmed_by, confirmed_at, created_at`,
     [params.actorUserId, params.conditionId, params.blockId]
   );
   const row = updated.rows[0];
-  if (!row) throw new Error("Condition not found");
+  if (!row) throw new Error("Condition not found or not submitted");
+  await query(
+    `UPDATE escrow_mvp_blocks b
+     SET status = CASE
+       WHEN EXISTS (
+         SELECT 1 FROM escrow_mvp_conditions c
+         WHERE c.block_id = b.id AND c.required = true
+       ) AND NOT EXISTS (
+         SELECT 1 FROM escrow_mvp_conditions c
+         WHERE c.block_id = b.id AND c.required = true AND c.status <> 'CONFIRMED'
+       ) THEN 'READY_FOR_FINAL_APPROVAL'
+       ELSE 'IN_PROGRESS'
+     END
+     WHERE b.id = $1 AND b.trade_id = $2`,
+    [params.blockId, params.tradeId]
+  );
   await appendAuditLog({
     tradeId: params.tradeId,
     action: "CONDITION_CONFIRMED",
@@ -753,11 +887,156 @@ export async function confirmCondition(params: {
     type: row.type,
     required: row.required,
     assignedRole: row.assigned_role,
+    confirmerRole: row.confirmer_role,
     status: row.status,
+    rejectReason: row.reject_reason,
+    rejectedBy: row.rejected_by,
+    rejectedAt: row.rejected_at,
+    resubmittedAt: row.resubmitted_at,
+    submittedAt: row.submitted_at,
     confirmedBy: row.confirmed_by,
     confirmedAt: row.confirmed_at,
     createdAt: row.created_at,
   } as MvpCondition;
+}
+
+export async function submitCondition(params: {
+  tradeId: string;
+  blockId: string;
+  conditionId: string;
+  actorUserId: string;
+  isResubmit?: boolean;
+}) {
+  const actorRole = await getParticipantRole(params.tradeId, params.actorUserId);
+  if (!actorRole) throw new Error("Only accepted participants can submit conditions");
+  const detail = await getTradeDetail(params.tradeId, params.actorUserId);
+  if (!detail) throw new Error("Trade not found");
+  const condition = detail.conditions.find((c) => c.id === params.conditionId && c.blockId === params.blockId);
+  if (!condition) throw new Error("Condition not found");
+  if (condition.assignedRole !== actorRole) throw new Error("Only assigned role can submit this condition");
+  if (!(condition.status === "PENDING" || condition.status === "REJECTED")) {
+    throw new Error("Only pending/rejected condition can be submitted");
+  }
+
+  if (!isDatabaseConfigured()) {
+    const target = memory.conditions.find((c) => c.id === params.conditionId)!;
+    target.status = "SUBMITTED";
+    target.submittedAt = nowIso();
+    if (params.isResubmit || condition.status === "REJECTED") target.resubmittedAt = nowIso();
+    target.rejectReason = null;
+    target.rejectedBy = null;
+    target.rejectedAt = null;
+    await appendAuditLog({
+      tradeId: params.tradeId,
+      action: params.isResubmit || condition.status === "REJECTED" ? "CONDITION_RESUBMITTED" : "CONDITION_SUBMITTED",
+      actorUserId: params.actorUserId,
+      meta: { blockId: params.blockId, conditionId: params.conditionId },
+    });
+    return target;
+  }
+
+  const updated = await query(
+    `UPDATE escrow_mvp_conditions
+     SET status = 'SUBMITTED',
+         submitted_at = now(),
+         resubmitted_at = CASE WHEN status = 'REJECTED' THEN now() ELSE resubmitted_at END,
+         reject_reason = NULL,
+         rejected_by = NULL,
+         rejected_at = NULL
+     WHERE id = $1 AND block_id = $2 AND status IN ('PENDING', 'REJECTED')
+     RETURNING id`,
+    [params.conditionId, params.blockId]
+  );
+  if (!updated.rows[0]) throw new Error("Condition not found or cannot be submitted");
+  await appendAuditLog({
+    tradeId: params.tradeId,
+    action: params.isResubmit || condition.status === "REJECTED" ? "CONDITION_RESUBMITTED" : "CONDITION_SUBMITTED",
+    actorUserId: params.actorUserId,
+    meta: { blockId: params.blockId, conditionId: params.conditionId },
+  });
+  return { id: params.conditionId, status: "SUBMITTED" as const };
+}
+
+export async function rejectConditionWithExtension(params: {
+  tradeId: string;
+  blockId: string;
+  conditionId: string;
+  actorUserId: string;
+  rejectReason: string;
+  newDueDate: string;
+}) {
+  const actorRole = await getParticipantRole(params.tradeId, params.actorUserId);
+  if (!actorRole) throw new Error("Only accepted participants can reject conditions");
+  if (!params.rejectReason.trim()) throw new Error("rejectReason is required");
+  if (!params.newDueDate) throw new Error("newDueDate is required");
+  const detail = await getTradeDetail(params.tradeId, params.actorUserId);
+  if (!detail) throw new Error("Trade not found");
+  const condition = detail.conditions.find((c) => c.id === params.conditionId && c.blockId === params.blockId);
+  if (!condition) throw new Error("Condition not found");
+  if (condition.confirmerRole !== actorRole) throw new Error("Only confirmer role can reject this condition");
+  if (condition.status !== "SUBMITTED") throw new Error("Only submitted condition can be rejected");
+
+  if (!isDatabaseConfigured()) {
+    const target = memory.conditions.find((c) => c.id === params.conditionId)!;
+    target.status = "REJECTED";
+    target.rejectReason = params.rejectReason.trim();
+    target.rejectedBy = params.actorUserId;
+    target.rejectedAt = nowIso();
+    const block = memory.blocks.find((b) => b.id === params.blockId && b.tradeId === params.tradeId);
+    if (block) {
+      block.extendedDueDate = params.newDueDate;
+      block.dueDate = params.newDueDate;
+      block.status = "IN_PROGRESS";
+    }
+    await appendAuditLog({
+      tradeId: params.tradeId,
+      action: "CONDITION_REJECTED",
+      actorUserId: params.actorUserId,
+      meta: {
+        blockId: params.blockId,
+        conditionId: params.conditionId,
+        rejectReason: params.rejectReason.trim(),
+        newDueDate: params.newDueDate,
+      },
+    });
+    return target;
+  }
+
+  await withTransaction(async (client) => {
+    const updated = await client.query(
+      `UPDATE escrow_mvp_conditions
+       SET status = 'REJECTED',
+           reject_reason = $1,
+           rejected_by = $2,
+           rejected_at = now()
+       WHERE id = $3 AND block_id = $4 AND status = 'SUBMITTED'
+       RETURNING id`,
+      [params.rejectReason.trim(), params.actorUserId, params.conditionId, params.blockId]
+    );
+    if (!updated.rows[0]) throw new Error("Condition not found or cannot be rejected");
+    await client.query(
+      `UPDATE escrow_mvp_blocks
+       SET due_date = $1, extended_due_date = $1, status = 'IN_PROGRESS'
+       WHERE id = $2 AND trade_id = $3`,
+      [params.newDueDate, params.blockId, params.tradeId]
+    );
+    await client.query(
+      `INSERT INTO escrow_mvp_audit_logs (id, trade_id, action, actor_user_id, meta, created_at)
+       VALUES ($1, $2, 'CONDITION_REJECTED', $3, $4, now())`,
+      [
+        crypto.randomUUID(),
+        params.tradeId,
+        params.actorUserId,
+        {
+          blockId: params.blockId,
+          conditionId: params.conditionId,
+          rejectReason: params.rejectReason.trim(),
+          newDueDate: params.newDueDate,
+        },
+      ]
+    );
+  });
+  return { id: params.conditionId, status: "REJECTED" as const };
 }
 
 export async function finalApproveBlock(params: { tradeId: string; blockId: string; actorUserId: string }) {
@@ -770,14 +1049,10 @@ export async function finalApproveBlock(params: { tradeId: string; blockId: stri
   if (block.finalApproverRole !== actorRole) {
     throw new Error("Only final approver role can approve");
   }
-  const blockConditions = detail.conditions.filter((c) => c.blockId === params.blockId);
-  const missingRequired = blockConditions.filter((c) => c.required && c.status !== "CONFIRMED");
-  if (missingRequired.length > 0) {
-    throw new Error("All required conditions must be confirmed");
-  }
+  if (block.status !== "READY_FOR_FINAL_APPROVAL") throw new Error("Block is not ready for final approval");
   if (!isDatabaseConfigured()) {
     const target = memory.blocks.find((b) => b.id === params.blockId)!;
-    target.status = "FINAL_APPROVED";
+    target.status = "APPROVED";
     await appendAuditLog({
       tradeId: params.tradeId,
       action: "BLOCK_FINAL_APPROVED",
@@ -790,19 +1065,23 @@ export async function finalApproveBlock(params: { tradeId: string; blockId: stri
     id: string;
     trade_id: string;
     title: string;
-    due_at: string;
+    start_date: string | null;
+    due_date: string;
+    approval_type: "MANUAL" | "SIMPLE";
     final_approver_role: MvpRole;
-    status: "DRAFT" | "OPEN" | "FINAL_APPROVED";
+    watchers: unknown;
+    extended_due_date: string | null;
+    status: "DRAFT" | "IN_PROGRESS" | "READY_FOR_FINAL_APPROVAL" | "APPROVED" | "DISPUTED" | "ON_HOLD";
     created_at: string;
   }>(
     `UPDATE escrow_mvp_blocks
-     SET status = 'FINAL_APPROVED'
-     WHERE id = $1 AND trade_id = $2
-     RETURNING id, trade_id, title, due_at, final_approver_role, status, created_at`,
+     SET status = 'APPROVED'
+     WHERE id = $1 AND trade_id = $2 AND status = 'READY_FOR_FINAL_APPROVAL'
+     RETURNING id, trade_id, title, start_date, due_date, approval_type, final_approver_role, watchers, extended_due_date, status, created_at`,
     [params.blockId, params.tradeId]
   );
   const row = updated.rows[0];
-  if (!row) throw new Error("Block not found");
+  if (!row) throw new Error("Block not found or not ready for final approval");
   await appendAuditLog({
     tradeId: params.tradeId,
     action: "BLOCK_FINAL_APPROVED",
@@ -813,9 +1092,518 @@ export async function finalApproveBlock(params: { tradeId: string; blockId: stri
     id: row.id,
     tradeId: row.trade_id,
     title: row.title,
-    dueAt: row.due_at,
+    startDate: row.start_date,
+    dueDate: row.due_date,
+    approvalType: row.approval_type,
     finalApproverRole: row.final_approver_role,
+    watchers: Array.isArray(row.watchers) ? (row.watchers as MvpRole[]) : [],
+    extendedDueDate: row.extended_due_date,
     status: row.status,
     createdAt: row.created_at,
   } as MvpBlock;
+}
+
+export async function getDashboardSummary(userId: string): Promise<{
+  createdTrades: MvpTrade[];
+  participantTrades: MvpTrade[];
+  pendingActions: Array<{
+    tradeId: string;
+    tradeTitle: string;
+    blockId: string;
+    blockTitle: string;
+    conditionId: string;
+    conditionTitle: string;
+    assignedRole: MvpRole;
+    conditionType: ConditionType;
+  }>;
+}> {
+  if (!isDatabaseConfigured()) {
+    const createdTrades = memory.trades.filter((t) => t.createdBy === userId);
+    const participantTradeIds = new Set(
+      memory.participants
+        .filter((p) => p.userId === userId && p.status === "ACCEPTED")
+        .map((p) => p.tradeId)
+    );
+    const participantTrades = memory.trades.filter((t) => t.createdBy !== userId && participantTradeIds.has(t.id));
+    const myRolesByTrade = new Map(
+      memory.participants
+        .filter((p) => p.userId === userId && p.status === "ACCEPTED")
+        .map((p) => [p.tradeId, p.role] as const)
+    );
+    const pendingActions = memory.conditions
+      .filter((c) => c.status === "SUBMITTED")
+      .flatMap((condition) => {
+        const block = memory.blocks.find((b) => b.id === condition.blockId);
+        if (!block) return [];
+        const myRole = myRolesByTrade.get(block.tradeId);
+        if (!myRole || myRole !== condition.assignedRole) return [];
+        const trade = memory.trades.find((t) => t.id === block.tradeId);
+        if (!trade) return [];
+        return [
+          {
+            tradeId: trade.id,
+            tradeTitle: trade.title,
+            blockId: block.id,
+            blockTitle: block.title,
+            conditionId: condition.id,
+            conditionTitle: condition.title,
+            assignedRole: condition.assignedRole,
+            conditionType: condition.type,
+          },
+        ];
+      });
+    return { createdTrades, participantTrades, pendingActions };
+  }
+
+  const [createdResult, participantResult, pendingResult] = await Promise.all([
+    query<{ id: string; title: string; description: string | null; created_by: string; status: "DRAFT" | "ACTIVE" | "COMPLETED"; created_at: string }>(
+      `SELECT id, title, description, created_by, status, created_at
+       FROM escrow_mvp_trades
+       WHERE created_by = $1
+       ORDER BY created_at DESC`,
+      [userId]
+    ),
+    query<{ id: string; title: string; description: string | null; created_by: string; status: "DRAFT" | "ACTIVE" | "COMPLETED"; created_at: string }>(
+      `SELECT DISTINCT t.id, t.title, t.description, t.created_by, t.status, t.created_at
+       FROM escrow_mvp_trades t
+       JOIN escrow_mvp_trade_participants p ON p.trade_id = t.id
+       WHERE p.user_id = $1 AND p.status = 'ACCEPTED' AND t.created_by <> $1
+       ORDER BY t.created_at DESC`,
+      [userId]
+    ),
+    query<{
+      trade_id: string;
+      trade_title: string;
+      block_id: string;
+      block_title: string;
+      condition_id: string;
+      condition_title: string;
+      assigned_role: MvpRole;
+      condition_type: ConditionType;
+    }>(
+      `SELECT
+         t.id AS trade_id,
+         t.title AS trade_title,
+         b.id AS block_id,
+         b.title AS block_title,
+         c.id AS condition_id,
+         c.title AS condition_title,
+         c.assigned_role,
+         c.type AS condition_type
+       FROM escrow_mvp_conditions c
+       JOIN escrow_mvp_blocks b ON b.id = c.block_id
+       JOIN escrow_mvp_trades t ON t.id = b.trade_id
+       JOIN escrow_mvp_trade_participants p
+         ON p.trade_id = t.id AND p.user_id = $1 AND p.status = 'ACCEPTED'
+       WHERE c.status = 'SUBMITTED'
+         AND c.assigned_role = p.role
+       ORDER BY t.created_at DESC, b.created_at DESC, c.created_at ASC`,
+      [userId]
+    ),
+  ]);
+
+  const createdTrades = createdResult.rows.map((r) => ({
+    id: r.id,
+    title: r.title,
+    description: r.description,
+    createdBy: r.created_by,
+    status: r.status,
+    createdAt: r.created_at,
+  }));
+  const participantTrades = participantResult.rows.map((r) => ({
+    id: r.id,
+    title: r.title,
+    description: r.description,
+    createdBy: r.created_by,
+    status: r.status,
+    createdAt: r.created_at,
+  }));
+  const pendingActions = pendingResult.rows.map((r) => ({
+    tradeId: r.trade_id,
+    tradeTitle: r.trade_title,
+    blockId: r.block_id,
+    blockTitle: r.block_title,
+    conditionId: r.condition_id,
+    conditionTitle: r.condition_title,
+    assignedRole: r.assigned_role,
+    conditionType: r.condition_type,
+  }));
+  return { createdTrades, participantTrades, pendingActions };
+}
+
+export async function listPendingApprovals(userId: string) {
+  const summary = await getDashboardSummary(userId);
+  return summary.pendingActions;
+}
+
+export async function listMyTasks(userId: string): Promise<
+  Array<{
+    tradeId: string;
+    tradeTitle: string;
+    blockId: string;
+    blockTitle: string;
+    conditionId: string;
+    conditionTitle: string;
+    assignedRole: MvpRole;
+    conditionType: ConditionType;
+  }>
+> {
+  if (!isDatabaseConfigured()) {
+    const myRolesByTrade = new Map(
+      memory.participants
+        .filter((p) => p.userId === userId && p.status === "ACCEPTED")
+        .map((p) => [p.tradeId, p.role] as const)
+    );
+    return memory.conditions
+      .filter((c) => c.status === "PENDING")
+      .flatMap((condition) => {
+        const block = memory.blocks.find((b) => b.id === condition.blockId);
+        if (!block) return [];
+        const myRole = myRolesByTrade.get(block.tradeId);
+        if (!myRole || myRole !== condition.assignedRole) return [];
+        const trade = memory.trades.find((t) => t.id === block.tradeId);
+        if (!trade) return [];
+        return [{
+          tradeId: trade.id,
+          tradeTitle: trade.title,
+          blockId: block.id,
+          blockTitle: block.title,
+          conditionId: condition.id,
+          conditionTitle: condition.title,
+          assignedRole: condition.assignedRole,
+          conditionType: condition.type,
+        }];
+      });
+  }
+
+  const rows = await query<{
+    trade_id: string;
+    trade_title: string;
+    block_id: string;
+    block_title: string;
+    condition_id: string;
+    condition_title: string;
+    assigned_role: MvpRole;
+    condition_type: ConditionType;
+  }>(
+    `SELECT
+       t.id AS trade_id,
+       t.title AS trade_title,
+       b.id AS block_id,
+       b.title AS block_title,
+       c.id AS condition_id,
+       c.title AS condition_title,
+       c.assigned_role,
+       c.type AS condition_type
+     FROM escrow_mvp_conditions c
+     JOIN escrow_mvp_blocks b ON b.id = c.block_id
+     JOIN escrow_mvp_trades t ON t.id = b.trade_id
+     JOIN escrow_mvp_trade_participants p
+       ON p.trade_id = t.id AND p.user_id = $1 AND p.status = 'ACCEPTED'
+     WHERE c.status = 'PENDING'
+       AND c.assigned_role = p.role
+     ORDER BY t.created_at DESC, b.created_at DESC, c.created_at ASC`,
+    [userId]
+  );
+  return rows.rows.map((r) => ({
+    tradeId: r.trade_id,
+    tradeTitle: r.trade_title,
+    blockId: r.block_id,
+    blockTitle: r.block_title,
+    conditionId: r.condition_id,
+    conditionTitle: r.condition_title,
+    assignedRole: r.assigned_role,
+    conditionType: r.condition_type,
+  }));
+}
+
+export async function getDashboardBadgeCounts(userId: string) {
+  const [pendingApprovals, myTasks, finalApprovalWaiting, invites] = await Promise.all([
+    listPendingApprovals(userId),
+    listMyTasks(userId),
+    listFinalApprovalWaiting(userId),
+    listDashboardInvites(userId),
+  ]);
+  return {
+    pendingApprovals: pendingApprovals.length,
+    myTasks: myTasks.length,
+    finalApprovalWaiting: finalApprovalWaiting.length,
+    inviteCount: invites.received.length,
+  };
+}
+
+export async function listFinalApprovalWaiting(userId: string): Promise<
+  Array<{
+    tradeId: string;
+    tradeTitle: string;
+    blockId: string;
+    blockTitle: string;
+    finalApproverRole: MvpRole;
+    ready: boolean;
+    missingRequiredCount: number;
+  }>
+> {
+  if (!isDatabaseConfigured()) {
+    const myRolesByTrade = new Map(
+      memory.participants
+        .filter((p) => p.userId === userId && p.status === "ACCEPTED")
+        .map((p) => [p.tradeId, p.role] as const)
+    );
+    return memory.blocks
+      .filter((b) => b.status === "READY_FOR_FINAL_APPROVAL")
+      .flatMap((block) => {
+        const myRole = myRolesByTrade.get(block.tradeId);
+        if (!myRole || myRole !== block.finalApproverRole) return [];
+        const trade = memory.trades.find((t) => t.id === block.tradeId);
+        if (!trade) return [];
+        return [
+          {
+            tradeId: trade.id,
+            tradeTitle: trade.title,
+            blockId: block.id,
+            blockTitle: block.title,
+            finalApproverRole: block.finalApproverRole,
+            ready: true,
+            missingRequiredCount: 0,
+          },
+        ];
+      });
+  }
+
+  const rows = await query<{
+    trade_id: string;
+    trade_title: string;
+    block_id: string;
+    block_title: string;
+    final_approver_role: MvpRole;
+    missing_required_count: string;
+  }>(
+    `SELECT
+       t.id AS trade_id,
+       t.title AS trade_title,
+       b.id AS block_id,
+       b.title AS block_title,
+       b.final_approver_role,
+       '0' AS missing_required_count
+     FROM escrow_mvp_blocks b
+     JOIN escrow_mvp_trades t ON t.id = b.trade_id
+     JOIN escrow_mvp_trade_participants p
+       ON p.trade_id = b.trade_id AND p.user_id = $1 AND p.status = 'ACCEPTED'
+     WHERE b.status = 'READY_FOR_FINAL_APPROVAL'
+       AND b.final_approver_role = p.role
+     ORDER BY t.created_at DESC, b.created_at DESC`,
+    [userId]
+  );
+  return rows.rows.map((r) => {
+    const missingRequiredCount = Number(r.missing_required_count || "0");
+    return {
+      tradeId: r.trade_id,
+      tradeTitle: r.trade_title,
+      blockId: r.block_id,
+      blockTitle: r.block_title,
+      finalApproverRole: r.final_approver_role,
+      ready: true,
+      missingRequiredCount,
+    };
+  });
+}
+
+export async function listDashboardInvites(userId: string): Promise<{
+  received: Array<{
+    inviteId: string;
+    tradeId: string;
+    tradeTitle: string;
+    token: string;
+    role: MvpRole;
+    status: "PENDING" | "ACCEPTED" | "DECLINED";
+    inviteTarget: string;
+    createdAt: string;
+  }>;
+  sent: Array<{
+    inviteId: string;
+    tradeId: string;
+    tradeTitle: string;
+    token: string;
+    role: MvpRole;
+    status: "PENDING" | "ACCEPTED" | "DECLINED";
+    inviteTarget: string;
+    createdAt: string;
+  }>;
+}> {
+  if (!isDatabaseConfigured()) {
+    const me = memory.users.find((u) => u.id === userId);
+    const meEmail = me?.email ?? "";
+    const received = memory.invites.flatMap((invite) => {
+      const p = memory.participants.find((x) => x.id === invite.participantId);
+      const t = memory.trades.find((x) => x.id === invite.tradeId);
+      if (!p || !t) return [];
+      const isMine = p.userId === userId || (!!meEmail && p.inviteType === "EMAIL" && p.inviteTarget.toLowerCase() === meEmail.toLowerCase());
+      if (!isMine) return [];
+      return [{
+        inviteId: invite.id,
+        tradeId: t.id,
+        tradeTitle: t.title,
+        token: invite.token,
+        role: p.role,
+        status: invite.status,
+        inviteTarget: p.inviteTarget,
+        createdAt: invite.createdAt,
+      }];
+    });
+    const sentInviteIds = new Set(
+      memory.logs
+        .filter((l) => l.action === "INVITE_CREATED" && l.actorUserId === userId)
+        .map((l) => String((l.meta as Record<string, unknown> | null)?.inviteId ?? ""))
+        .filter(Boolean)
+    );
+    const sent = memory.invites.flatMap((invite) => {
+      if (!sentInviteIds.has(invite.id)) return [];
+      const p = memory.participants.find((x) => x.id === invite.participantId);
+      const t = memory.trades.find((x) => x.id === invite.tradeId);
+      if (!p || !t) return [];
+      return [{
+        inviteId: invite.id,
+        tradeId: t.id,
+        tradeTitle: t.title,
+        token: invite.token,
+        role: p.role,
+        status: invite.status,
+        inviteTarget: p.inviteTarget,
+        createdAt: invite.createdAt,
+      }];
+    });
+    return { received, sent };
+  }
+
+  const me = await query<{ email: string }>("SELECT email FROM escrow_mvp_users WHERE id = $1 LIMIT 1", [userId]);
+  const meEmail = me.rows[0]?.email ?? "";
+
+  const [receivedRows, sentRows] = await Promise.all([
+    query<{
+      invite_id: string;
+      trade_id: string;
+      trade_title: string;
+      token: string;
+      role: MvpRole;
+      status: "PENDING" | "ACCEPTED" | "DECLINED";
+      invite_target: string;
+      created_at: string;
+    }>(
+      `SELECT
+         i.id AS invite_id,
+         t.id AS trade_id,
+         t.title AS trade_title,
+         i.token,
+         p.role,
+         i.status,
+         p.invite_target,
+         i.created_at
+       FROM escrow_mvp_invites i
+       JOIN escrow_mvp_trade_participants p ON p.id = i.participant_id
+       JOIN escrow_mvp_trades t ON t.id = i.trade_id
+       WHERE p.user_id = $1
+          OR ($2 <> '' AND p.invite_type = 'EMAIL' AND LOWER(p.invite_target) = LOWER($2))
+       ORDER BY i.created_at DESC`,
+      [userId, meEmail]
+    ),
+    query<{
+      invite_id: string;
+      trade_id: string;
+      trade_title: string;
+      token: string;
+      role: MvpRole;
+      status: "PENDING" | "ACCEPTED" | "DECLINED";
+      invite_target: string;
+      created_at: string;
+    }>(
+      `SELECT
+         i.id AS invite_id,
+         t.id AS trade_id,
+         t.title AS trade_title,
+         i.token,
+         p.role,
+         i.status,
+         p.invite_target,
+         i.created_at
+       FROM escrow_mvp_invites i
+       JOIN escrow_mvp_trade_participants p ON p.id = i.participant_id
+       JOIN escrow_mvp_trades t ON t.id = i.trade_id
+       JOIN escrow_mvp_audit_logs l
+         ON l.trade_id = t.id
+        AND l.action = 'INVITE_CREATED'
+        AND l.actor_user_id = $1
+        AND l.meta->>'inviteId' = i.id
+       ORDER BY i.created_at DESC`,
+      [userId]
+    ),
+  ]);
+
+  return {
+    received: receivedRows.rows.map((r) => ({
+      inviteId: r.invite_id,
+      tradeId: r.trade_id,
+      tradeTitle: r.trade_title,
+      token: r.token,
+      role: r.role,
+      status: r.status,
+      inviteTarget: r.invite_target,
+      createdAt: r.created_at,
+    })),
+    sent: sentRows.rows.map((r) => ({
+      inviteId: r.invite_id,
+      tradeId: r.trade_id,
+      tradeTitle: r.trade_title,
+      token: r.token,
+      role: r.role,
+      status: r.status,
+      inviteTarget: r.invite_target,
+      createdAt: r.created_at,
+    })),
+  };
+}
+
+export async function getProgressBuckets(userId: string): Promise<{
+  active: MvpTrade[];
+  completed: MvpTrade[];
+  disputedOrOnHold: MvpTrade[];
+}> {
+  const allTrades = await listMyTrades(userId);
+  if (!isDatabaseConfigured()) {
+    const completed = allTrades.filter((trade) => {
+      const blocks = memory.blocks.filter((b) => b.tradeId === trade.id);
+      return blocks.length > 0 && blocks.every((b) => b.status === "APPROVED");
+    });
+    const active = allTrades.filter((trade) => !completed.some((c) => c.id === trade.id));
+    const disputedOrOnHold = allTrades.filter((trade) => {
+      const blocks = memory.blocks.filter((b) => b.tradeId === trade.id);
+      return blocks.some((b) => b.status === "DISPUTED" || b.status === "ON_HOLD");
+    });
+    return { active: active.filter((t) => !disputedOrOnHold.some((d) => d.id === t.id)), completed, disputedOrOnHold };
+  }
+
+  const rows = await query<{
+    trade_id: string;
+    all_final_approved: boolean;
+    has_disputed_or_on_hold: boolean;
+    block_count: string;
+  }>(
+    `SELECT
+       t.id AS trade_id,
+       COALESCE(bool_and(b.status = 'APPROVED'), false) AS all_final_approved,
+       COALESCE(bool_or(b.status IN ('DISPUTED', 'ON_HOLD')), false) AS has_disputed_or_on_hold,
+       COUNT(b.id)::text AS block_count
+     FROM escrow_mvp_trades t
+     LEFT JOIN escrow_mvp_blocks b ON b.trade_id = t.id
+     WHERE t.id = ANY($1::uuid[])
+     GROUP BY t.id`,
+    [allTrades.map((t) => t.id)]
+  );
+  const byTrade = new Map(rows.rows.map((r) => [r.trade_id, r]));
+  const completed = allTrades.filter((trade) => {
+    const row = byTrade.get(trade.id);
+    return row && Number(row.block_count || "0") > 0 && row.all_final_approved;
+  });
+  const disputedOrOnHold = allTrades.filter((trade) => byTrade.get(trade.id)?.has_disputed_or_on_hold);
+  const active = allTrades.filter((trade) => !completed.some((c) => c.id === trade.id) && !disputedOrOnHold.some((d) => d.id === trade.id));
+  return { active, completed, disputedOrOnHold };
 }

@@ -31,7 +31,12 @@ export default function InvitePage() {
       return;
     }
     setInfo(inviteJson.data);
-    setMe(meJson.ok ? meJson.data : null);
+    const nextMe = meJson.ok ? meJson.data : null;
+    setMe(nextMe);
+    if (!nextMe) {
+      const next = encodeURIComponent(`/invites/${token}`);
+      router.replace(`/auth/login?next=${next}`);
+    }
   }
 
   async function accept() {
@@ -41,7 +46,7 @@ export default function InvitePage() {
       alert(json.error ?? "수락 실패");
       return;
     }
-    router.push(`/trades/${info?.trade.id}`);
+    router.push(`/transactions/${info?.trade.id}`);
   }
 
   async function decline() {
@@ -70,10 +75,10 @@ export default function InvitePage() {
       </div>
       {!me ? (
         <div className="space-y-2">
-          <p>초대를 수락하려면 로그인 또는 회원가입이 필요합니다.</p>
+          <p>로그인 페이지로 이동 중...</p>
           <div className="flex gap-3">
-            <Link href="/auth/login" className="px-4 py-2 bg-blue-600 text-white rounded">Login</Link>
-            <Link href="/auth/signup" className="px-4 py-2 border rounded">Sign up</Link>
+            <Link href={`/auth/login?next=${encodeURIComponent(`/invites/${token}`)}`} className="px-4 py-2 bg-blue-600 text-white rounded">Login</Link>
+            <Link href={`/auth/signup?next=${encodeURIComponent(`/invites/${token}`)}`} className="px-4 py-2 border rounded">Sign up</Link>
           </div>
         </div>
       ) : (
