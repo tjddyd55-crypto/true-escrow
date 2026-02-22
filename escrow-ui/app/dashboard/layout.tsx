@@ -77,29 +77,31 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   return (
     <main className="min-h-screen bg-gray-50">
-      <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-4 p-4">
+      <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-[290px_1fr] gap-4 p-4">
         <aside className="bg-white border rounded-xl p-3 h-fit">
           <div className="mb-3">
-            <Link href="/transactions/new" className="block text-center px-3 py-2 rounded bg-blue-600 text-white text-sm font-medium">
+            <Link href="/transactions/new" className="block text-center px-3 py-2.5 rounded-md bg-blue-600 text-white text-sm font-semibold">
               Create Transaction
             </Link>
           </div>
-          <nav className="space-y-4">
+          <nav className="space-y-3">
             {GROUPS.map((g) => (
-              <div key={g.title}>
-                <div className="text-xs font-semibold text-gray-500 px-2 mb-1">{g.title}</div>
+              <div key={g.title} className="border border-gray-100 rounded-lg p-2">
+                <div className="text-[11px] uppercase tracking-wide font-semibold text-gray-500 px-2 mb-1.5">{g.title}</div>
                 <div className="space-y-1">
                   {g.items.map((item) => (
                     <Link
                       key={item.href}
                       href={item.href}
-                      className={`flex items-center justify-between px-2 py-2 rounded text-sm ${
-                        isActive(item.href) ? "bg-blue-50 text-blue-700" : "text-gray-700 hover:bg-gray-50"
+                      className={`flex items-center justify-between px-3 py-2.5 rounded-md text-[15px] leading-5 min-h-[44px] ${
+                        isActive(item.href)
+                          ? "bg-blue-100 text-blue-800 font-semibold"
+                          : "text-gray-700 font-medium hover:bg-gray-50"
                       }`}
                     >
-                      <span>{item.label}</span>
+                      <span className="truncate">{item.label}</span>
                       {item.badge ? (
-                        <span className="text-xs rounded-full bg-gray-200 px-2 py-0.5">{badges[item.badge]}</span>
+                        <span className="text-xs rounded-full bg-gray-200 px-2 py-0.5 min-w-[24px] text-center">{badges[item.badge]}</span>
                       ) : null}
                     </Link>
                   ))}
