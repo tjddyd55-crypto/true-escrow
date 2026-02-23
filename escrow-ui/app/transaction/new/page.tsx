@@ -84,8 +84,8 @@ export default function NewTransactionPage() {
 
       if (res.ok && responseData.ok && responseData.data && responseData.data.id) {
         const transactionId = responseData.data.id;
-        console.log("[Frontend] Redirecting to builder:", transactionId);
-        router.push(`/transaction/builder/${transactionId}`);
+        console.log("[Frontend] Redirecting to canonical detail:", transactionId);
+        router.push(`/transactions/${transactionId}`);
       } else {
         console.error("[Frontend] Transaction creation failed:", responseData);
         alert(responseData.error || "Failed to create transaction");
@@ -108,7 +108,7 @@ export default function NewTransactionPage() {
       });
       const json = await res.json().catch(() => ({}));
       if (res.ok && json.ok && json.data?.tradeId) {
-        router.push(`/transaction/builder/${json.data.tradeId}`);
+        router.push(`/transactions/${json.data.tradeId}`);
         return;
       }
       alert(json.error || "Failed to clone template");

@@ -35,7 +35,7 @@ export default function TemplatesPage() {
     <main style={{ maxWidth: 900, margin: "0 auto", padding: "40px 20px" }}>
       <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 16, alignItems: "center" }}>
         <h1 style={{ margin: 0 }}>내 템플릿</h1>
-        <Link href="/transaction/new" style={{ color: "#0070f3", textDecoration: "none" }}>
+        <Link href="/transactions/new" style={{ color: "#0070f3", textDecoration: "none" }}>
           + 새 거래 생성
         </Link>
       </div>
@@ -51,7 +51,7 @@ export default function TemplatesPage() {
                 생성일: {new Date(t.created_at).toLocaleString()}
               </div>
               <div style={{ marginTop: 10 }}>
-                <Link href={`/transaction/new`} style={{ color: "#0ea5e9", textDecoration: "none", fontWeight: 600 }}>
+                <Link href={`/transactions/new`} style={{ color: "#0ea5e9", textDecoration: "none", fontWeight: 600 }}>
                   이 템플릿으로 새 거래 만들기
                 </Link>
               </div>
