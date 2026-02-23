@@ -36,13 +36,25 @@ function looksLikeSha256Hex(value: string): boolean {
   return /^[a-f0-9]{64}$/i.test(value);
 }
 
+function normalizeStoredHash(value: string): string {
+  const trimmed = value.trim();
+  if (trimmed.startsWith("sha256:")) return trimmed.slice("sha256:".length).trim();
+  if (trimmed.startsWith("sha256$")) return trimmed.slice("sha256$".length).trim();
+  return trimmed;
+}
+
 function verifyPassword(storedHash: string, rawPassword: string): { ok: boolean; needsUpgrade: boolean } {
-  const hashed = hashPassword(rawPassword);
-  if (storedHash === hashed) {
+  const hashedHex = hashPassword(rawPassword);
+  const hashedBase64 = crypto.createHash("sha256").update(rawPassword).digest("base64");
+  const normalized = normalizeStoredHash(storedHash);
+
+  if (looksLikeSha256Hex(normalized) && normalized.toLowerCase() === hashedHex.toLowerCase()) {
     return { ok: true, needsUpgrade: false };
   }
+  if (normalized === hashedBase64) return { ok: true, needsUpgrade: true };
+
   // Backward compatibility: some early environments stored raw password.
-  if (!looksLikeSha256Hex(storedHash) && storedHash === rawPassword) {
+  if (!looksLikeSha256Hex(normalized) && normalized === rawPassword) {
     return { ok: true, needsUpgrade: true };
   }
   return { ok: false, needsUpgrade: false };
