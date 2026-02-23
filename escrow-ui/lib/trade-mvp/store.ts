@@ -32,6 +32,22 @@ function hashPassword(password: string): string {
   return crypto.createHash("sha256").update(password).digest("hex");
 }
 
+function looksLikeSha256Hex(value: string): boolean {
+  return /^[a-f0-9]{64}$/i.test(value);
+}
+
+function verifyPassword(storedHash: string, rawPassword: string): { ok: boolean; needsUpgrade: boolean } {
+  const hashed = hashPassword(rawPassword);
+  if (storedHash === hashed) {
+    return { ok: true, needsUpgrade: false };
+  }
+  // Backward compatibility: some early environments stored raw password.
+  if (!looksLikeSha256Hex(storedHash) && storedHash === rawPassword) {
+    return { ok: true, needsUpgrade: true };
+  }
+  return { ok: false, needsUpgrade: false };
+}
+
 function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
 }
@@ -96,10 +112,13 @@ export async function signup(params: { email: string; password: string; name?: s
 
 export async function login(params: { email: string; password: string }) {
   const email = normalizeEmail(params.email);
-  const passwordHash = hashPassword(params.password);
   if (!isDatabaseConfigured()) {
-    const user = memory.users.find((u) => u.email === email && u.passwordHash === passwordHash);
+    const user = memory.users.find((u) => u.email === email && verifyPassword(u.passwordHash, params.password).ok);
     if (!user) return null;
+    const verify = verifyPassword(user.passwordHash, params.password);
+    if (verify.needsUpgrade) {
+      user.passwordHash = hashPassword(params.password);
+    }
     return publicUser(user);
   }
   const result = await query<{ id: string; email: string; name: string | null; password_hash: string; created_at: string }>(
@@ -110,7 +129,12 @@ export async function login(params: { email: string; password: string }) {
     [email]
   );
   const row = result.rows[0];
-  if (!row || row.password_hash !== passwordHash) return null;
+  if (!row) return null;
+  const verify = verifyPassword(row.password_hash, params.password);
+  if (!verify.ok) return null;
+  if (verify.needsUpgrade) {
+    await query("UPDATE escrow_mvp_users SET password_hash = $1 WHERE id = $2", [hashPassword(params.password), row.id]);
+  }
   return { id: row.id, email: row.email, name: row.name, createdAt: row.created_at };
 }
 
