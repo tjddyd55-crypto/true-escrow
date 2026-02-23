@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { useI18n } from "@/lib/i18n/provider";
 import { BlockQuestionBuilder, type BlockQuestion } from "@/components/question-builder/BlockQuestionBuilder";
@@ -21,6 +21,7 @@ import { useAutoSave, useAutoSaveByKey, SaveStatusIndicator } from "@/lib/hooks/
 
 export default function TransactionBuilderPage() {
   const params = useParams();
+  const router = useRouter();
   const transactionId = params.id as string;
   const { t, tKey, lang, setLang } = useI18n();
   const [graph, setGraph] = useState<TransactionGraph | null>(null);
@@ -50,6 +51,7 @@ export default function TransactionBuilderPage() {
   const [addApproverDisplayName, setAddApproverDisplayName] = useState("");
   const [draggingBlockId, setDraggingBlockId] = useState<string | null>(null);
   const [dropTargetBlockId, setDropTargetBlockId] = useState<string | null>(null);
+  const [savingDraft, setSavingDraft] = useState(false);
 
   const APPROVER_ROLES: ApproverRole[] = ["BUYER", "SELLER", "VERIFIER", "ADMIN"];
   const APPROVAL_MODES: ApprovalMode[] = [
@@ -228,7 +230,7 @@ export default function TransactionBuilderPage() {
       const res = await fetch(`/api/engine/blocks/${blockId}/questions`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type: "SHORT_TEXT", label: "Untitled question", required: false, allowAttachment: false }),
+        body: JSON.stringify({ type: "LONG_TEXT", label: "Untitled question", required: false, allowAttachment: false }),
       });
       if (res.ok) {
         const json = await res.json();
@@ -375,14 +377,68 @@ export default function TransactionBuilderPage() {
     if (!confirm("Activate this transaction? Block structure will be locked.")) return;
 
     try {
+      await persistLocalDraftChanges();
       const res = await fetch(`/api/engine/transactions/${transactionId}/activate`, {
         method: "POST",
       });
       if (res.ok) {
-        fetchData();
+        await fetchData();
+        router.push("/dashboard/progress/active");
       }
     } catch (error) {
       console.error("Failed to activate transaction:", error);
+    }
+  }
+
+  async function persistLocalDraftChanges() {
+    if (!graph || graph.transaction.status !== "DRAFT") return;
+
+    const nextTitle = (localTxTitle ?? graph.transaction.title ?? "").trim();
+    const currentTitle = (graph.transaction.title ?? "").trim();
+    const nextDescription = (localTxDesc ?? graph.transaction.description ?? "").trim();
+    const currentDescription = (graph.transaction.description ?? "").trim();
+
+    if (nextTitle !== currentTitle || nextDescription !== currentDescription) {
+      await updateTransaction({
+        title: nextTitle || undefined,
+        description: nextDescription || undefined,
+      });
+      setLocalTxTitle(undefined);
+      setLocalTxDesc(undefined);
+    }
+
+    const pendingBlockEntries = Object.entries(localBlockTitles);
+    for (const [blockId, title] of pendingBlockEntries) {
+      const serverBlock = graph.blocks.find((b) => b.id === blockId);
+      if (!serverBlock) continue;
+      const normalized = title.trim() || "Untitled block";
+      if (normalized !== tKey(serverBlock.title).trim()) {
+        await updateBlock(blockId, { title: normalized });
+      }
+    }
+    if (pendingBlockEntries.length > 0) {
+      setLocalBlockTitles({});
+    }
+  }
+
+  async function saveDraft() {
+    if (!graph || graph.transaction.status !== "DRAFT" || savingDraft) return;
+    setSavingDraft(true);
+    try {
+      await persistLocalDraftChanges();
+      const res = await fetch(`/api/engine/transactions/${transactionId}/save-draft`, {
+        method: "POST",
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json.ok) {
+        throw new Error(json.error || "Failed to save draft");
+      }
+      await fetchData();
+      alert("저장되었습니다");
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "저장에 실패했습니다.");
+    } finally {
+      setSavingDraft(false);
     }
   }
 
@@ -667,6 +723,25 @@ export default function TransactionBuilderPage() {
                 }}
               >
                 템플릿으로 저장
+              </button>
+            )}
+            {isDraft && (
+              <button
+                type="button"
+                onClick={saveDraft}
+                disabled={savingDraft}
+                style={{
+                  padding: "8px 16px",
+                  minHeight: 40,
+                  backgroundColor: savingDraft ? "#93c5fd" : "#2563eb",
+                  color: "white",
+                  border: "none",
+                  borderRadius: 4,
+                  cursor: savingDraft ? "not-allowed" : "pointer",
+                  fontWeight: "600",
+                }}
+              >
+                {savingDraft ? "저장 중..." : "저장"}
               </button>
             )}
             <span

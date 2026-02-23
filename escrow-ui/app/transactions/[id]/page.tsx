@@ -13,10 +13,14 @@ export default function TransactionDetailPage() {
 
   useEffect(() => {
     void (async () => {
-      const res = await fetch(`/api/trades/${id}`, { cache: "no-store" });
+      const res = await fetch(`/api/transactions/${id}`, { cache: "no-store" });
+      const json = await res.json().catch(() => ({}));
       if (res.ok) {
-        setIsMvpTrade(true);
+        setIsMvpTrade(json?.data?.kind === "MVP");
         setResolved(true);
+        if (json?.data?.kind !== "MVP") {
+          router.replace(`/transaction/builder/${id}`);
+        }
         return;
       }
       router.replace(`/transaction/builder/${id}`);

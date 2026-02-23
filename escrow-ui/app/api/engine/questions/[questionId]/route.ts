@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { isDatabaseConfigured, query } from "@/lib/db";
 import * as inMemoryQuestionStore from "@/lib/block-questions/inMemoryQuestionStore";
 
+const ALLOWED_TYPES = new Set(["LONG_TEXT", "FILE_UPLOAD"]);
+
 type QuestionRow = {
   id: string;
   block_id: string;
@@ -31,16 +33,23 @@ export async function PATCH(
       if (!existing) {
         return NextResponse.json({ ok: false, error: "Question not found" }, { status: 404 });
       }
+      const normalizedType =
+        typeof body.type === "string" && ALLOWED_TYPES.has(body.type)
+          ? body.type
+          : undefined;
+      const effectiveAllowAttachment =
+        normalizedType === "FILE_UPLOAD"
+          ? true
+          : body.allowAttachment !== undefined || body.allow_attachment !== undefined
+            ? Boolean(body.allowAttachment ?? body.allow_attachment)
+            : undefined;
       const updated = inMemoryQuestionStore.updateQuestion(questionId, {
-        type: body.type as string | undefined,
+        type: normalizedType as string | undefined,
         label: body.label as string | null | undefined,
         description: body.description as string | null | undefined,
         required: body.required !== undefined ? Boolean(body.required) : undefined,
-        allow_attachment:
-          body.allowAttachment !== undefined || body.allow_attachment !== undefined
-            ? Boolean(body.allowAttachment ?? body.allow_attachment)
-            : undefined,
-        options: body.options,
+        allow_attachment: effectiveAllowAttachment,
+        options: body.options !== undefined ? {} : undefined,
       });
       return NextResponse.json({
         ok: true,
@@ -58,6 +67,9 @@ export async function PATCH(
     const values: unknown[] = [];
     let i = 1;
     if (body.type !== undefined) {
+      if (typeof body.type !== "string" || !ALLOWED_TYPES.has(body.type)) {
+        return NextResponse.json({ ok: false, error: "Unsupported question type" }, { status: 400 });
+      }
       updates.push(`type = $${i++}`);
       values.push(body.type);
     }
@@ -77,9 +89,13 @@ export async function PATCH(
       updates.push(`allow_attachment = $${i++}`);
       values.push(Boolean(body.allowAttachment ?? body.allow_attachment));
     }
+    if (body.type === "FILE_UPLOAD" && body.allowAttachment === undefined && body.allow_attachment === undefined) {
+      updates.push(`allow_attachment = $${i++}`);
+      values.push(true);
+    }
     if (body.options !== undefined) {
       updates.push(`options = $${i++}`);
-      values.push(body.options);
+      values.push({});
     }
     if (updates.length === 0) {
       const { rows } = await query<QuestionRow>(

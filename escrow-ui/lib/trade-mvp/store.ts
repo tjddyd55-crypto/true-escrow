@@ -240,6 +240,83 @@ export async function listMyTrades(userId: string): Promise<MvpTrade[]> {
   }));
 }
 
+export type DashboardTradeListItem = {
+  id: string;
+  title: string;
+  description?: string | null;
+  createdAt: string;
+  status: "DRAFT" | "ACTIVE" | "COMPLETED";
+  createdByMe: boolean;
+  myRole: MvpRole | null;
+};
+
+export async function listDashboardTransactions(
+  userId: string,
+  status: "DRAFT" | "ACTIVE" | "COMPLETED"
+): Promise<DashboardTradeListItem[]> {
+  if (!isDatabaseConfigured()) {
+    const myParticipants = memory.participants.filter((p) => p.userId === userId && p.status === "ACCEPTED");
+    const roleByTrade = new Map(myParticipants.map((p) => [p.tradeId, p.role] as const));
+    return memory.trades
+      .filter((trade) => {
+        if (trade.status !== status) return false;
+        if (status === "DRAFT") return trade.createdBy === userId;
+        return trade.createdBy === userId || roleByTrade.has(trade.id);
+      })
+      .map((trade) => ({
+        id: trade.id,
+        title: trade.title,
+        description: trade.description,
+        createdAt: trade.createdAt,
+        status: trade.status,
+        createdByMe: trade.createdBy === userId,
+        myRole: roleByTrade.get(trade.id) ?? null,
+      }))
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  }
+
+  const rows = await query<{
+    id: string;
+    title: string;
+    description: string | null;
+    created_at: string;
+    status: "DRAFT" | "ACTIVE" | "COMPLETED";
+    created_by_me: boolean;
+    my_role: MvpRole | null;
+  }>(
+    `SELECT DISTINCT
+       t.id,
+       t.title,
+       t.description,
+       t.created_at,
+       t.status,
+       (t.created_by = $1) AS created_by_me,
+       p.role AS my_role
+     FROM escrow_mvp_trades t
+     LEFT JOIN escrow_mvp_trade_participants p
+       ON p.trade_id = t.id
+      AND p.user_id = $1
+      AND p.status = 'ACCEPTED'
+     WHERE t.status = $2
+       AND (
+         ($2 = 'DRAFT' AND t.created_by = $1)
+         OR ($2 <> 'DRAFT' AND (t.created_by = $1 OR p.user_id IS NOT NULL))
+       )
+     ORDER BY t.created_at DESC`,
+    [userId, status]
+  );
+
+  return rows.rows.map((row) => ({
+    id: row.id,
+    title: row.title,
+    description: row.description,
+    createdAt: row.created_at,
+    status: row.status,
+    createdByMe: row.created_by_me,
+    myRole: row.my_role,
+  }));
+}
+
 async function getParticipantRole(tradeId: string, userId: string): Promise<MvpRole | null> {
   if (!isDatabaseConfigured()) {
     return memory.participants.find((p) => p.tradeId === tradeId && p.userId === userId && p.status === "ACCEPTED")?.role ?? null;

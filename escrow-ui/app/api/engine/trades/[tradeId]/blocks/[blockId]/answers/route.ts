@@ -67,7 +67,7 @@ export async function POST(
       if (!q.required) continue;
       const value = answerByQ.get(q.id);
       const opts = optionsByQ.get(q.id);
-      const attachmentEnabled = Boolean(q.allow_attachment || q.type === "FILE");
+      const attachmentEnabled = Boolean(q.allow_attachment || q.type === "FILE" || q.type === "FILE_UPLOAD");
       const hasAttachment = attachmentEnabled
         ? isDatabaseConfigured()
           ? Number(
@@ -98,7 +98,7 @@ export async function POST(
       const q = questions.find((x) => x.id === a.questionId);
       if (!q) continue;
       const opts = optionsByQ.get(q.id);
-      const attachmentEnabled = Boolean(q.allow_attachment || q.type === "FILE");
+      const attachmentEnabled = Boolean(q.allow_attachment || q.type === "FILE" || q.type === "FILE_UPLOAD");
       const hasAttachment = attachmentEnabled
         ? isDatabaseConfigured()
           ? (

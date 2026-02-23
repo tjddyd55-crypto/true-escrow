@@ -3,15 +3,21 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 
-type Trade = { id: string; title: string; createdAt: string };
+type Trade = {
+  id: string;
+  title: string;
+  createdAt: string;
+  status: "DRAFT" | "ACTIVE" | "COMPLETED";
+  myRole?: "BUYER" | "SELLER" | "VERIFIER" | null;
+};
 
 export default function ActiveProgressPage() {
   const [items, setItems] = useState<Trade[]>([]);
   useEffect(() => {
     void (async () => {
-      const res = await fetch("/api/dashboard/progress", { cache: "no-store" });
+      const res = await fetch("/api/dashboard/transactions?status=ACTIVE", { cache: "no-store" });
       const json = await res.json().catch(() => ({}));
-      setItems(json?.ok ? json.data?.active ?? [] : []);
+      setItems(json?.ok ? json.data ?? [] : []);
     })();
   }, []);
   return (
@@ -21,6 +27,8 @@ export default function ActiveProgressPage() {
         {items.map((t) => (
           <div key={t.id} className="border rounded p-3">
             <div className="font-medium">{t.title}</div>
+            <div className="text-xs text-emerald-700 font-medium mt-1">{t.status}</div>
+            {t.myRole ? <div className="text-xs text-gray-600">My role: {t.myRole}</div> : null}
             <Link className="text-blue-600 text-sm" href={`/transactions/${t.id}`}>Open</Link>
           </div>
         ))}

@@ -2,17 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { isDatabaseConfigured, query } from "@/lib/db";
 import * as inMemoryQuestionStore from "@/lib/block-questions/inMemoryQuestionStore";
 
-function buildDefaultOptionsByType(type: string): unknown {
-  if (type === "CHECKBOX" || type === "RADIO" || type === "DROPDOWN") {
-    return {
-      choices: [
-        { id: "option_1", label: "옵션 1", value: "option_1" },
-        { id: "option_2", label: "옵션 2", value: "option_2" },
-      ],
-    };
-  }
-  return {};
-}
+const ALLOWED_TYPES = new Set(["LONG_TEXT", "FILE_UPLOAD"]);
 
 type QuestionRow = {
   id: string;
@@ -86,7 +76,8 @@ export async function POST(
 
     const body = await request.json();
 
-    const type = body.type ?? "SHORT_TEXT";
+    const requestedType = typeof body.type === "string" ? body.type : "LONG_TEXT";
+    const type = ALLOWED_TYPES.has(requestedType) ? requestedType : "LONG_TEXT";
     const rawLabel = body.label;
     const label =
       typeof rawLabel === "string" && rawLabel.trim().length > 0
@@ -94,8 +85,11 @@ export async function POST(
         : "New question";
     const description = body.description ?? null;
     const required = Boolean(body.required);
-    const allowAttachment = Boolean(body.allowAttachment ?? body.allow_attachment ?? false);
-    const options = body.options ?? buildDefaultOptionsByType(type);
+    const allowAttachment =
+      type === "FILE_UPLOAD"
+        ? true
+        : Boolean(body.allowAttachment ?? body.allow_attachment ?? false);
+    const options = {};
 
     if (!isDatabaseConfigured()) {
       const created = inMemoryQuestionStore.createQuestion({

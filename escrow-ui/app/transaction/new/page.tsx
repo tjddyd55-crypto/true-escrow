@@ -60,12 +60,15 @@ export default function NewTransactionPage() {
     }
 
     try {
+      const meRes = await fetch("/api/me", { cache: "no-store" });
+      const meJson = await meRes.json().catch(() => ({}));
+      const currentUserId = meRes.ok && meJson?.ok ? meJson.data?.id : null;
       const payload: any = {
         title,
         description,
-        initiatorId: "00000000-0000-0000-0000-000000000001",
+        initiatorId: currentUserId ?? "00000000-0000-0000-0000-000000000001",
         initiatorRole: "BUYER",
-        buyerId: "00000000-0000-0000-0000-000000000001",
+        buyerId: currentUserId ?? "00000000-0000-0000-0000-000000000001",
         sellerId: "00000000-0000-0000-0000-000000000002",
       };
 

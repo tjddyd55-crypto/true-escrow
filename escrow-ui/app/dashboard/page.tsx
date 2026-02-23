@@ -9,6 +9,7 @@ type Trade = {
   description?: string | null;
   createdBy: string;
   createdAt: string;
+  status?: "DRAFT" | "ACTIVE" | "COMPLETED";
 };
 
 export default function DashboardPage() {
@@ -30,6 +31,8 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [finalWaiting, setFinalWaiting] = useState<Array<{ tradeId: string; blockId: string; ready: boolean }>>([]);
   const [receivedInvitesCount, setReceivedInvitesCount] = useState(0);
+  const [draftTrades, setDraftTrades] = useState<Trade[]>([]);
+  const [activeTrades, setActiveTrades] = useState<Trade[]>([]);
 
   useEffect(() => {
     void load();
@@ -38,11 +41,13 @@ export default function DashboardPage() {
   async function load() {
     setLoading(true);
     try {
-      const [meRes, summaryRes, finalRes, inviteRes] = await Promise.all([
+      const [meRes, summaryRes, finalRes, inviteRes, draftRes, activeRes] = await Promise.all([
         fetch("/api/me", { cache: "no-store" }),
         fetch("/api/dashboard/summary", { cache: "no-store" }),
         fetch("/api/dashboard/final-approval-waiting", { cache: "no-store" }),
         fetch("/api/dashboard/invitations", { cache: "no-store" }),
+        fetch("/api/dashboard/transactions?status=DRAFT", { cache: "no-store" }),
+        fetch("/api/dashboard/transactions?status=ACTIVE", { cache: "no-store" }),
       ]);
       const meJson = await meRes.json().catch(() => ({}));
       setMe(meJson.ok ? meJson.data : null);
@@ -60,6 +65,10 @@ export default function DashboardPage() {
       setFinalWaiting(finalJson?.ok ? finalJson.data ?? [] : []);
       const inviteJson = await inviteRes.json().catch(() => ({}));
       setReceivedInvitesCount(inviteJson?.ok ? Number(inviteJson.data?.received?.length ?? 0) : 0);
+      const draftJson = await draftRes.json().catch(() => ({}));
+      setDraftTrades(draftJson?.ok ? draftJson.data ?? [] : []);
+      const activeJson = await activeRes.json().catch(() => ({}));
+      setActiveTrades(activeJson?.ok ? activeJson.data ?? [] : []);
     } finally {
       setLoading(false);
     }
@@ -73,12 +82,12 @@ export default function DashboardPage() {
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-5">
         <div className="border rounded-lg p-3">
-          <div className="text-xs text-gray-500">Created by Me</div>
-          <div className="text-xl font-semibold">{createdTrades.length}</div>
+          <div className="text-xs text-gray-500">Draft Transactions</div>
+          <div className="text-xl font-semibold">{draftTrades.length}</div>
         </div>
         <div className="border rounded-lg p-3">
-          <div className="text-xs text-gray-500">Participating</div>
-          <div className="text-xl font-semibold">{participantTrades.length}</div>
+          <div className="text-xs text-gray-500">Active Transactions</div>
+          <div className="text-xl font-semibold">{activeTrades.length}</div>
         </div>
         <div className="border rounded-lg p-3">
           <div className="text-xs text-gray-500">Pending Approvals</div>

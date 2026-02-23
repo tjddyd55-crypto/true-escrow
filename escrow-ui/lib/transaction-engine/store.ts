@@ -435,6 +435,17 @@ export function saveTransactionGraph(graph: TransactionGraph): void {
   saveToFile();
 }
 
+export function saveDraftTransaction(id: string): Transaction {
+  const tx = findTransaction(id);
+  if (!tx) throw new Error("Transaction not found");
+  if (tx.status !== "DRAFT") {
+    throw new Error("Only DRAFT transactions can be saved as draft");
+  }
+  appendLog(id, "ADMIN", "TRANSACTION_DRAFT_SAVED");
+  saveToFile();
+  return tx;
+}
+
 export function activateTransaction(id: string): Transaction {
   const tx = findTransaction(id);
   if (!tx) {
