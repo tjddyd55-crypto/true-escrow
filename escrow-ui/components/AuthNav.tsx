@@ -2,10 +2,13 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
 
 type Me = { id: string; email: string; name?: string | null } | null;
 
 export default function AuthNav() {
+  const pathname = usePathname();
+  const router = useRouter();
   const [me, setMe] = useState<Me>(null);
   const [loading, setLoading] = useState(true);
 
@@ -15,15 +18,18 @@ export default function AuthNav() {
         const res = await fetch("/api/me", { cache: "no-store" });
         const json = await res.json().catch(() => ({}));
         if (res.ok && json.ok) setMe(json.data ?? null);
+        else setMe(null);
       } finally {
         setLoading(false);
       }
     })();
-  }, []);
+  }, [pathname]);
 
   async function logout() {
     await fetch("/api/auth/logout", { method: "POST" });
-    window.location.href = "/auth/login";
+    setMe(null);
+    router.replace("/auth/login");
+    router.refresh();
   }
 
   if (loading) return <span style={{ fontSize: "0.85rem", color: "#888" }}>...</span>;
