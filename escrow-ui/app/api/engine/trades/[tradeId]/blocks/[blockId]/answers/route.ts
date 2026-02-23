@@ -36,9 +36,15 @@ export async function POST(
     const body = (await request.json()) as {
       actorRole?: string;
       answers?: Array<{ questionId: string; answer: unknown }>;
+      questionId?: string;
+      answer?: unknown;
     };
     const actorRole = body.actorRole ?? "BUYER";
-    const answers = Array.isArray(body.answers) ? body.answers : [];
+    const answers = Array.isArray(body.answers)
+      ? body.answers
+      : typeof body.questionId === "string"
+        ? [{ questionId: body.questionId, answer: body.answer }]
+        : [];
     if (answers.length === 0) {
       return NextResponse.json(
         { ok: false, error: "answers array required" },

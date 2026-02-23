@@ -24,8 +24,22 @@ const memory = {
   logs: [] as MvpAuditLog[],
 };
 
+type ConditionAnswerPayload = {
+  text: string;
+  attachments: string[];
+};
+
 function nowIso(): string {
   return new Date().toISOString();
+}
+
+function normalizeConditionAnswer(input: unknown): ConditionAnswerPayload {
+  const source = input && typeof input === "object" ? (input as Record<string, unknown>) : {};
+  const text = typeof source.text === "string" ? source.text : "";
+  const attachments = Array.isArray(source.attachments)
+    ? source.attachments.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+    : [];
+  return { text, attachments };
 }
 
 function hashPassword(password: string): string {
@@ -409,11 +423,12 @@ export async function getTradeDetail(tradeId: string, userId: string) {
       submitted_at: string | null;
       confirmed_by: string | null;
       confirmed_at: string | null;
+      answer_json: unknown;
       created_at: string;
     }>(
       `SELECT c.id, c.block_id, c.title, c.description, c.type, c.required,
               c.assigned_role, c.confirmer_role, c.status, c.reject_reason, c.rejected_by, c.rejected_at,
-              c.resubmitted_at, c.submitted_at, c.confirmed_by, c.confirmed_at, c.created_at
+              c.resubmitted_at, c.submitted_at, c.confirmed_by, c.confirmed_at, c.answer_json, c.created_at
        FROM escrow_mvp_conditions c
        JOIN escrow_mvp_blocks b ON b.id = c.block_id
        WHERE b.trade_id = $1
@@ -463,6 +478,7 @@ export async function getTradeDetail(tradeId: string, userId: string) {
       submittedAt: r.submitted_at,
       confirmedBy: r.confirmed_by,
       confirmedAt: r.confirmed_at,
+      answerJson: normalizeConditionAnswer(r.answer_json),
       createdAt: r.created_at,
     })),
   };
@@ -1018,6 +1034,7 @@ export async function submitCondition(params: {
   blockId: string;
   conditionId: string;
   actorUserId: string;
+  answer: unknown;
   isResubmit?: boolean;
 }) {
   const actorRole = await getParticipantRole(params.tradeId, params.actorUserId);
@@ -1033,21 +1050,24 @@ export async function submitCondition(params: {
 
   if (!isDatabaseConfigured()) {
     const target = memory.conditions.find((c) => c.id === params.conditionId)!;
+    const answerJson = normalizeConditionAnswer(params.answer);
     target.status = "SUBMITTED";
     target.submittedAt = nowIso();
     if (params.isResubmit || condition.status === "REJECTED") target.resubmittedAt = nowIso();
     target.rejectReason = null;
     target.rejectedBy = null;
     target.rejectedAt = null;
+    target.answerJson = answerJson;
     await appendAuditLog({
       tradeId: params.tradeId,
       action: params.isResubmit || condition.status === "REJECTED" ? "CONDITION_RESUBMITTED" : "CONDITION_SUBMITTED",
       actorUserId: params.actorUserId,
       meta: { blockId: params.blockId, conditionId: params.conditionId },
     });
-    return target;
+    return { ...target, answer: answerJson };
   }
 
+  const answerJson = normalizeConditionAnswer(params.answer);
   const updated = await query(
     `UPDATE escrow_mvp_conditions
      SET status = 'SUBMITTED',
@@ -1055,10 +1075,11 @@ export async function submitCondition(params: {
          resubmitted_at = CASE WHEN status = 'REJECTED' THEN now() ELSE resubmitted_at END,
          reject_reason = NULL,
          rejected_by = NULL,
-         rejected_at = NULL
+         rejected_at = NULL,
+         answer_json = $3::jsonb
      WHERE id = $1 AND block_id = $2 AND status IN ('PENDING', 'REJECTED')
      RETURNING id`,
-    [params.conditionId, params.blockId]
+    [params.conditionId, params.blockId, JSON.stringify(answerJson)]
   );
   if (!updated.rows[0]) throw new Error("Condition not found or cannot be submitted");
   await appendAuditLog({
@@ -1067,7 +1088,7 @@ export async function submitCondition(params: {
     actorUserId: params.actorUserId,
     meta: { blockId: params.blockId, conditionId: params.conditionId },
   });
-  return { id: params.conditionId, status: "SUBMITTED" as const };
+  return { id: params.conditionId, status: "SUBMITTED" as const, answer: answerJson };
 }
 
 export async function rejectConditionWithExtension(params: {

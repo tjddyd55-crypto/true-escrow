@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 
 type Role = "BUYER" | "SELLER" | "VERIFIER";
 type ConditionType = "CHECK" | "FILE_UPLOAD" | "TEXT" | "NUMBER" | "DATE";
 type ConditionStatus = "PENDING" | "SUBMITTED" | "CONFIRMED" | "REJECTED";
 type BlockStatus = "DRAFT" | "IN_PROGRESS" | "READY_FOR_FINAL_APPROVAL" | "APPROVED" | "DISPUTED" | "ON_HOLD";
+type ConditionAnswer = { text: string; attachments: string[] };
 
 type TradeDetail = {
   trade: { id: string; title: string; description?: string | null; createdBy: string; createdAt: string; status?: string };
@@ -23,12 +24,248 @@ type TradeDetail = {
     confirmerRole: Role;
     status: ConditionStatus;
     rejectReason?: string | null;
+    answerJson?: ConditionAnswer | null;
   }>;
 };
 
 type Tab = "overview" | "blocks" | "participants";
 const ROLES: Role[] = ["BUYER", "SELLER", "VERIFIER"];
 const CONDITION_TYPES: ConditionType[] = ["CHECK", "FILE_UPLOAD", "TEXT", "NUMBER", "DATE"];
+const STATUS_ORDER: Record<ConditionStatus, number> = {
+  REJECTED: 0,
+  PENDING: 1,
+  SUBMITTED: 2,
+  CONFIRMED: 3,
+};
+
+type LocalAttachment = { id: string; name: string; url: string; previewUrl: string };
+
+const STATUS_STYLE: Record<ConditionStatus, string> = {
+  PENDING: "bg-blue-100 text-blue-800",
+  SUBMITTED: "bg-violet-100 text-violet-800",
+  REJECTED: "bg-red-100 text-red-800",
+  CONFIRMED: "bg-green-100 text-green-800",
+};
+
+const ConditionCard = memo(function ConditionCard(props: {
+  condition: TradeDetail["conditions"][number];
+  blockDueDate: string;
+  myRole: Role | null;
+  loading: boolean;
+  tradeId: string;
+  blockId: string;
+  onSubmit: (conditionId: string, isResubmit: boolean, answer: ConditionAnswer) => Promise<void>;
+  onConfirm: (conditionId: string) => Promise<void>;
+  onReject: (conditionId: string) => Promise<void>;
+}) {
+  const { condition, blockDueDate, myRole, loading, tradeId, blockId, onSubmit, onConfirm, onReject } = props;
+  const [text, setText] = useState("");
+  const [attachments, setAttachments] = useState<LocalAttachment[]>([]);
+
+  const isWriter = myRole === condition.assignedRole;
+  const isConfirmer = myRole === condition.confirmerRole;
+  const canWrite = isWriter && (condition.status === "PENDING" || condition.status === "REJECTED");
+  const canConfirm = isConfirmer && condition.status === "SUBMITTED";
+  const isFileType = condition.type === "FILE_UPLOAD";
+  const hasContent = isFileType ? attachments.length > 0 : text.trim().length > 0 || attachments.length > 0;
+  const submitDisabled = loading || (condition.required && !hasContent);
+
+  useEffect(() => {
+    const initial = condition.answerJson ?? { text: "", attachments: [] };
+    setText(initial.text ?? "");
+    setAttachments(
+      (initial.attachments ?? []).map((url, index) => ({
+        id: `${condition.id}-${index}-${url}`,
+        name: url.split("/").pop() || "attachment",
+        url,
+        previewUrl: url,
+      }))
+    );
+  }, [condition.id, condition.answerJson]);
+
+  async function onPickFiles(files: FileList | null) {
+    if (!files || files.length === 0) return;
+    const next: LocalAttachment[] = [];
+    for (const file of Array.from(files)) {
+      const uploadRes = await fetch(`/api/engine/trades/${tradeId}/blocks/${blockId}/attachments`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          questionId: condition.id,
+          fileName: file.name,
+          mime: file.type || null,
+          size: file.size,
+          uploaderRole: myRole ?? "BUYER",
+        }),
+      });
+      const uploadJson = await uploadRes.json().catch(() => ({}));
+      if (!uploadRes.ok || !uploadJson.ok || !uploadJson.data?.url) {
+        throw new Error(uploadJson.error ?? "파일 업로드 메타데이터 저장에 실패했습니다.");
+      }
+      next.push({
+        id: uploadJson.data.id ?? `${file.name}-${Date.now()}`,
+        name: file.name,
+        url: uploadJson.data.url,
+        previewUrl: uploadJson.data.url,
+      });
+    }
+    setAttachments((prev) => [...prev, ...next]);
+  }
+
+  function removeAttachment(id: string) {
+    setAttachments((prev) => {
+      const target = prev.find((item) => item.id === id);
+      if (target?.previewUrl) URL.revokeObjectURL(target.previewUrl);
+      return prev.filter((item) => item.id !== id);
+    });
+  }
+
+  useEffect(
+    () => () => {
+      attachments
+        .filter((item) => item.previewUrl.startsWith("blob:"))
+        .forEach((item) => URL.revokeObjectURL(item.previewUrl));
+    },
+    [attachments]
+  );
+
+  return (
+    <article className="border rounded-lg p-4 bg-white space-y-3">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className={`inline-flex text-xs px-2 py-1 rounded font-semibold ${STATUS_STYLE[condition.status]}`}>
+            {condition.status}
+          </div>
+          <h4 className="font-semibold mt-2">
+            {condition.title}{" "}
+            {condition.required ? <span className="text-xs text-red-600">(Required)</span> : <span className="text-xs text-gray-500">(Optional)</span>}
+          </h4>
+          {condition.description ? <p className="text-sm text-gray-600 mt-1">{condition.description}</p> : null}
+        </div>
+        <div className="text-xs text-gray-600 text-right min-w-[170px] space-y-1">
+          <div>Assigned: {condition.assignedRole}</div>
+          <div>Confirmer: {condition.confirmerRole}</div>
+          <div>Required: {condition.required ? "Yes" : "No"}</div>
+          <div>
+            내 역할:{" "}
+            {isWriter ? "작성자" : isConfirmer ? "검증자" : myRole ?? "미참여"}
+          </div>
+        </div>
+      </div>
+
+      {condition.status === "REJECTED" ? (
+        <div className="bg-red-50 border border-red-200 rounded p-3 text-sm text-red-700">
+          <div>반려 사유: {condition.rejectReason || "-"}</div>
+          <div>새 마감일: {blockDueDate}</div>
+        </div>
+      ) : null}
+
+      <div className="border-t pt-3">
+        {isFileType ? (
+          <div className="space-y-2">
+            <input
+              type="file"
+              multiple
+              disabled={!canWrite || loading}
+              onChange={(e) => void onPickFiles(e.target.files).catch((err) => alert(err instanceof Error ? err.message : "Upload failed"))}
+            />
+            {attachments.length > 0 ? (
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {attachments.map((file) => (
+                  <div key={file.id} className="border rounded p-2">
+                    <img src={file.previewUrl} alt={file.name} className="w-full h-20 object-cover rounded" />
+                    <div className="text-xs mt-1 truncate">{file.name}</div>
+                    {canWrite ? (
+                      <button type="button" className="text-xs text-red-600 mt-1" onClick={() => removeAttachment(file.id)}>
+                        제거
+                      </button>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-gray-500">첨부 파일이 없습니다.</p>
+            )}
+          </div>
+        ) : (
+          <div className="space-y-2">
+            <textarea
+              className="w-full border rounded p-2 min-h-[120px] disabled:bg-gray-50"
+              placeholder="조건 내용을 작성하세요."
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              disabled={!canWrite || loading}
+            />
+            {attachments.length > 0 ? (
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {attachments.map((file) => (
+                  <div key={file.id} className="border rounded p-2">
+                    <img src={file.previewUrl} alt={file.name} className="w-full h-20 object-cover rounded" />
+                    <div className="text-xs mt-1 truncate">{file.name}</div>
+                    {canWrite ? (
+                      <button type="button" className="text-xs text-red-600 mt-1" onClick={() => removeAttachment(file.id)}>
+                        제거
+                      </button>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        )}
+      </div>
+
+      <div className="border-t pt-3 flex justify-end gap-2">
+        {isWriter && condition.status === "PENDING" ? (
+          <button
+            className="px-3 py-2 rounded bg-blue-600 text-white disabled:opacity-50"
+            disabled={submitDisabled}
+            onClick={() =>
+              void onSubmit(condition.id, false, {
+                text,
+                attachments: attachments.map((item) => item.url),
+              })
+            }
+          >
+            제출하기
+          </button>
+        ) : null}
+        {isWriter && condition.status === "REJECTED" ? (
+          <button
+            className="px-3 py-2 rounded bg-blue-600 text-white disabled:opacity-50"
+            disabled={submitDisabled}
+            onClick={() =>
+              void onSubmit(condition.id, true, {
+                text,
+                attachments: attachments.map((item) => item.url),
+              })
+            }
+          >
+            수정 후 재제출
+          </button>
+        ) : null}
+        {canConfirm ? (
+          <>
+            <button
+              className="px-3 py-2 rounded bg-green-600 text-white disabled:opacity-50"
+              disabled={loading}
+              onClick={() => void onConfirm(condition.id)}
+            >
+              승인
+            </button>
+            <button
+              className="px-3 py-2 rounded bg-red-600 text-white disabled:opacity-50"
+              disabled={loading}
+              onClick={() => void onReject(condition.id)}
+            >
+              반려
+            </button>
+          </>
+        ) : null}
+      </div>
+    </article>
+  );
+});
 
 export default function TradeDetailPage() {
   const params = useParams();
@@ -56,6 +293,7 @@ export default function TradeDetailPage() {
   const [conditionDraftByBlockId, setConditionDraftByBlockId] = useState<
     Record<string, { title: string; description: string; type: ConditionType; required: boolean; assignedRole: Role; confirmerRole: Role }>
   >({});
+  const [conditionActionLoadingId, setConditionActionLoadingId] = useState<string | null>(null);
 
   useEffect(() => {
     void load();
@@ -167,23 +405,46 @@ export default function TradeDetailPage() {
     }
   }
 
-  async function submitCondition(blockId: string, conditionId: string, isResubmit: boolean) {
+  function patchConditionStatus(conditionId: string, patch: Partial<TradeDetail["conditions"][number]>) {
+    setDetail((prev) =>
+      prev
+        ? {
+            ...prev,
+            conditions: prev.conditions.map((item) => (item.id === conditionId ? { ...item, ...patch } : item)),
+          }
+        : prev
+    );
+  }
+
+  async function submitCondition(blockId: string, conditionId: string, isResubmit: boolean, answer: ConditionAnswer) {
     try {
-      await callAction(
+      setConditionActionLoadingId(conditionId);
+      const data = await callAction(
         `/api/trades/${tradeId}/blocks/${blockId}/conditions/${conditionId}/${isResubmit ? "resubmit" : "submit"}`
+        ,
+        { answer }
       );
-      await load();
+      patchConditionStatus(conditionId, {
+        status: "SUBMITTED",
+        rejectReason: null,
+        answerJson: data?.answer ?? answer,
+      });
     } catch (e) {
       alert(e instanceof Error ? e.message : "Submit failed");
+    } finally {
+      setConditionActionLoadingId(null);
     }
   }
 
   async function confirmCondition(blockId: string, conditionId: string) {
     try {
+      setConditionActionLoadingId(conditionId);
       await callAction(`/api/trades/${tradeId}/blocks/${blockId}/conditions/${conditionId}/confirm`);
-      await load();
+      patchConditionStatus(conditionId, { status: "CONFIRMED" });
     } catch (e) {
       alert(e instanceof Error ? e.message : "Confirm failed");
+    } finally {
+      setConditionActionLoadingId(null);
     }
   }
 
@@ -193,10 +454,13 @@ export default function TradeDetailPage() {
     const newDueDate = prompt("New due date (YYYY-MM-DD)");
     if (!newDueDate) return;
     try {
+      setConditionActionLoadingId(conditionId);
       await callAction(`/api/trades/${tradeId}/blocks/${blockId}/conditions/${conditionId}/reject`, { rejectReason, newDueDate });
-      await load();
+      patchConditionStatus(conditionId, { status: "REJECTED", rejectReason });
     } catch (e) {
       alert(e instanceof Error ? e.message : "Reject failed");
+    } finally {
+      setConditionActionLoadingId(null);
     }
   }
 
@@ -208,6 +472,20 @@ export default function TradeDetailPage() {
       alert(e instanceof Error ? e.message : "Final approve failed");
     }
   }
+
+  const submitConditionForBlock = useCallback(
+    async (blockId: string, conditionId: string, isResubmit: boolean, answer: ConditionAnswer) =>
+      submitCondition(blockId, conditionId, isResubmit, answer),
+    [tradeId]
+  );
+  const confirmConditionForBlock = useCallback(
+    async (blockId: string, conditionId: string) => confirmCondition(blockId, conditionId),
+    [tradeId]
+  );
+  const rejectConditionForBlock = useCallback(
+    async (blockId: string, conditionId: string) => rejectCondition(blockId, conditionId),
+    [tradeId]
+  );
 
   if (!detail) return <main className="max-w-6xl mx-auto p-6">Loading...</main>;
 
@@ -277,7 +555,9 @@ export default function TradeDetailPage() {
           </div>
 
           {detail.blocks.map((block) => {
-            const conditions = detail.conditions.filter((c) => c.blockId === block.id);
+            const conditions = [...detail.conditions.filter((c) => c.blockId === block.id)].sort(
+              (a, b) => STATUS_ORDER[a.status] - STATUS_ORDER[b.status]
+            );
             const canFinalApprove = myRole === block.finalApproverRole && block.status === "READY_FOR_FINAL_APPROVAL";
             return (
               <div key={block.id} className="border rounded p-4 space-y-3">
@@ -306,27 +586,19 @@ export default function TradeDetailPage() {
                   {conditions.length === 0 ? <p className="text-sm text-gray-500">No conditions yet</p> : (
                     <div className="space-y-2">
                       {conditions.map((c) => {
-                        const canSubmit = myRole === c.assignedRole && c.status === "PENDING";
-                        const canResubmit = myRole === c.assignedRole && c.status === "REJECTED";
-                        const canConfirm = myRole === c.confirmerRole && c.status === "SUBMITTED";
-                        const canReject = myRole === c.confirmerRole && c.status === "SUBMITTED";
                         return (
-                          <div key={c.id} className="border rounded p-3 text-sm space-y-2">
-                            <div className="flex items-center justify-between gap-2">
-                              <div>
-                                <div className="font-medium">{c.title} {c.required ? "(required)" : "(optional)"}</div>
-                                <div className="text-gray-500">{c.type} / assigned: {c.assignedRole} / confirmer: {c.confirmerRole}</div>
-                              </div>
-                              <span className="text-xs px-2 py-1 rounded bg-gray-100">{c.status}</span>
-                            </div>
-                            {c.rejectReason ? <div className="text-red-600">Reject reason: {c.rejectReason}</div> : null}
-                            <div className="flex flex-wrap gap-2">
-                              <button className="px-2 py-1 rounded border disabled:opacity-50" disabled={!canSubmit} onClick={() => submitCondition(block.id, c.id, false)}>Submit</button>
-                              <button className="px-2 py-1 rounded border disabled:opacity-50" disabled={!canResubmit} onClick={() => submitCondition(block.id, c.id, true)}>Resubmit</button>
-                              <button className="px-2 py-1 rounded border disabled:opacity-50" disabled={!canConfirm} onClick={() => confirmCondition(block.id, c.id)}>Confirm</button>
-                              <button className="px-2 py-1 rounded border disabled:opacity-50" disabled={!canReject} onClick={() => rejectCondition(block.id, c.id)}>Reject</button>
-                            </div>
-                          </div>
+                          <ConditionCard
+                            key={c.id}
+                            condition={c}
+                            tradeId={tradeId}
+                            blockId={block.id}
+                            blockDueDate={block.extendedDueDate ?? block.dueDate}
+                            myRole={myRole}
+                            loading={conditionActionLoadingId === c.id}
+                            onSubmit={(conditionId, isResubmit, answer) => submitConditionForBlock(block.id, conditionId, isResubmit, answer)}
+                            onConfirm={(conditionId) => confirmConditionForBlock(block.id, conditionId)}
+                            onReject={(conditionId) => rejectConditionForBlock(block.id, conditionId)}
+                          />
                         );
                       })}
                     </div>

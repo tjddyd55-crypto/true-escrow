@@ -90,6 +90,10 @@ export type MvpCondition = {
   submittedAt?: string | null;
   confirmedBy?: string | null;
   confirmedAt?: string | null;
+  answerJson?: {
+    text: string;
+    attachments: string[];
+  } | null;
   createdAt: string;
 };
 
