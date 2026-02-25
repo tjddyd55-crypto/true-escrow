@@ -8,6 +8,8 @@ type ConditionType = "CHECK" | "FILE_UPLOAD" | "TEXT" | "NUMBER" | "DATE";
 type ConditionStatus = "PENDING" | "SUBMITTED" | "CONFIRMED" | "REJECTED";
 type BlockStatus = "DRAFT" | "IN_PROGRESS" | "READY_FOR_FINAL_APPROVAL" | "APPROVED" | "DISPUTED" | "ON_HOLD";
 type ConditionAnswer = { text: string; attachments: string[] };
+type StepperStatus = "DRAFT" | "ACTIVE" | "IN_PROGRESS" | "READY_FOR_FINAL_APPROVAL" | "COMPLETED";
+type SummaryActionType = "TASK" | "APPROVAL" | "FINAL";
 
 type TradeDetail = {
   trade: { id: string; title: string; description?: string | null; createdBy: string; createdAt: string; status?: string };
@@ -25,6 +27,33 @@ type TradeDetail = {
     status: ConditionStatus;
     rejectReason?: string | null;
     answerJson?: ConditionAnswer | null;
+  }>;
+};
+
+type TradeSummary = {
+  trade: { id: string; title: string; status: string; kind: "MVP" | "ENGINE" };
+  participantRole: Role | null;
+  stepperStatus: StepperStatus;
+  blocks: Array<{
+    id: string;
+    title: string;
+    dueDate: string;
+    extendedDueDate: string | null;
+    status: string;
+    requiredCount: number;
+    confirmedCount: number;
+    submittedCount: number;
+    rejectedCount: number;
+    progressPct: number;
+    myTasksCount: number;
+    myApprovalsCount: number;
+  }>;
+  myNextActions: Array<{
+    type: SummaryActionType;
+    blockId: string;
+    conditionId?: string;
+    title: string;
+    dueDate: string | null;
   }>;
 };
 
@@ -46,6 +75,54 @@ const STATUS_STYLE: Record<ConditionStatus, string> = {
   REJECTED: "bg-red-100 text-red-800",
   CONFIRMED: "bg-green-100 text-green-800",
 };
+
+const STEPS: StepperStatus[] = ["DRAFT", "ACTIVE", "IN_PROGRESS", "READY_FOR_FINAL_APPROVAL", "COMPLETED"];
+
+function StatusStepper({ current }: { current: StepperStatus }) {
+  const currentIndex = STEPS.indexOf(current);
+  return (
+    <div className="border rounded-lg p-4 bg-white">
+      <h2 className="font-semibold mb-3">거래 진행 상태</h2>
+      <div className="hidden md:flex items-center gap-2">
+        {STEPS.map((step, index) => {
+          const done = index < currentIndex;
+          const active = index === currentIndex;
+          return (
+            <div key={step} className="flex items-center gap-2 flex-1 min-w-0">
+              <div
+                className={`w-7 h-7 rounded-full text-xs flex items-center justify-center font-semibold ${
+                  done
+                    ? "bg-green-600 text-white"
+                    : active
+                      ? "bg-blue-600 text-white"
+                      : "bg-gray-200 text-gray-500"
+                }`}
+              >
+                {done ? "✓" : index + 1}
+              </div>
+              <div className={`text-xs truncate ${active ? "text-blue-700 font-semibold" : done ? "text-green-700" : "text-gray-500"}`}>
+                {step}
+              </div>
+              {index < STEPS.length - 1 ? <div className="h-px bg-gray-300 flex-1" /> : null}
+            </div>
+          );
+        })}
+      </div>
+      <div className="md:hidden space-y-1">
+        {STEPS.map((step, index) => {
+          const done = index < currentIndex;
+          const active = index === currentIndex;
+          return (
+            <div key={step} className="flex items-center gap-2 text-sm">
+              <span className={`w-2 h-2 rounded-full ${done ? "bg-green-600" : active ? "bg-blue-600" : "bg-gray-300"}`} />
+              <span className={active ? "font-semibold text-blue-700" : done ? "text-green-700" : "text-gray-500"}>{step}</span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 const ConditionCard = memo(function ConditionCard(props: {
   condition: TradeDetail["conditions"][number];
@@ -130,7 +207,7 @@ const ConditionCard = memo(function ConditionCard(props: {
   );
 
   return (
-    <article className="border rounded-lg p-4 bg-white space-y-3">
+    <article id={`condition-${condition.id}`} className="border rounded-lg p-4 bg-white space-y-3">
       <div className="flex items-start justify-between gap-3">
         <div>
           <div className={`inline-flex text-xs px-2 py-1 rounded font-semibold ${STATUS_STYLE[condition.status]}`}>
@@ -272,6 +349,7 @@ export default function TradeDetailPage() {
   const tradeId = (params.tradeId ?? params.id) as string;
   const [tab, setTab] = useState<Tab>("overview");
   const [detail, setDetail] = useState<TradeDetail | null>(null);
+  const [summary, setSummary] = useState<TradeSummary | null>(null);
   const [me, setMe] = useState<{ id: string } | null>(null);
   const [inviteForm, setInviteForm] = useState({ inviteType: "EMAIL", inviteTarget: "", role: "SELLER" as Role });
   const [blockDraft, setBlockDraft] = useState<{
@@ -300,9 +378,14 @@ export default function TradeDetailPage() {
   }, [tradeId]);
 
   async function load() {
-    const [meRes, detailRes] = await Promise.all([fetch("/api/me"), fetch(`/api/trades/${tradeId}`)]);
+    const [meRes, detailRes, summaryRes] = await Promise.all([
+      fetch("/api/me"),
+      fetch(`/api/trades/${tradeId}`),
+      fetch(`/api/transactions/${tradeId}/summary`),
+    ]);
     const meJson = await meRes.json().catch(() => ({}));
     const detailJson = await detailRes.json().catch(() => ({}));
+    const summaryJson = await summaryRes.json().catch(() => ({}));
     setMe(meJson.ok ? meJson.data : null);
     if (detailRes.ok && detailJson.ok) {
       setDetail(detailJson.data);
@@ -319,6 +402,13 @@ export default function TradeDetailPage() {
       }
       setBlockEditById(nextEdit);
     }
+    setSummary(summaryRes.ok && summaryJson.ok ? (summaryJson.data as TradeSummary) : null);
+  }
+
+  async function refreshSummary() {
+    const res = await fetch(`/api/transactions/${tradeId}/summary`);
+    const json = await res.json().catch(() => ({}));
+    if (res.ok && json.ok) setSummary(json.data as TradeSummary);
   }
 
   const myRole = useMemo(() => {
@@ -429,6 +519,7 @@ export default function TradeDetailPage() {
         rejectReason: null,
         answerJson: data?.answer ?? answer,
       });
+      await refreshSummary();
     } catch (e) {
       alert(e instanceof Error ? e.message : "Submit failed");
     } finally {
@@ -441,6 +532,7 @@ export default function TradeDetailPage() {
       setConditionActionLoadingId(conditionId);
       await callAction(`/api/trades/${tradeId}/blocks/${blockId}/conditions/${conditionId}/confirm`);
       patchConditionStatus(conditionId, { status: "CONFIRMED" });
+      await refreshSummary();
     } catch (e) {
       alert(e instanceof Error ? e.message : "Confirm failed");
     } finally {
@@ -457,6 +549,7 @@ export default function TradeDetailPage() {
       setConditionActionLoadingId(conditionId);
       await callAction(`/api/trades/${tradeId}/blocks/${blockId}/conditions/${conditionId}/reject`, { rejectReason, newDueDate });
       patchConditionStatus(conditionId, { status: "REJECTED", rejectReason });
+      await refreshSummary();
     } catch (e) {
       alert(e instanceof Error ? e.message : "Reject failed");
     } finally {
@@ -487,12 +580,54 @@ export default function TradeDetailPage() {
     [tradeId]
   );
 
+  const summaryByBlockId = useMemo(() => {
+    const next = new Map<string, TradeSummary["blocks"][number]>();
+    for (const block of summary?.blocks ?? []) next.set(block.id, block);
+    return next;
+  }, [summary]);
+
+  function focusAction(action: TradeSummary["myNextActions"][number]) {
+    const targetId = action.conditionId ? `condition-${action.conditionId}` : `block-${action.blockId}`;
+    const el = document.getElementById(targetId);
+    if (!el) return;
+    el.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
   if (!detail) return <main className="max-w-6xl mx-auto p-6">Loading...</main>;
 
   return (
     <main className="max-w-6xl mx-auto p-6">
       <h1 className="text-2xl font-semibold mb-2">{detail.trade.title}</h1>
       {detail.trade.description && <p className="text-gray-600 mb-4">{detail.trade.description}</p>}
+
+      {summary ? (
+        <section className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
+          <div className="lg:col-span-2">
+            <StatusStepper current={summary.stepperStatus} />
+          </div>
+          <aside className="border rounded-lg p-4 bg-white lg:sticky lg:top-20 h-fit">
+            <h2 className="font-semibold mb-2">📌 내가 지금 해야 할 일</h2>
+            {summary.myNextActions.length === 0 ? (
+              <p className="text-sm text-gray-500">현재 처리할 작업이 없습니다.</p>
+            ) : (
+              <div className="space-y-2">
+                {summary.myNextActions.map((action, idx) => (
+                  <button
+                    key={`${action.type}-${action.blockId}-${action.conditionId ?? idx}`}
+                    type="button"
+                    className="w-full text-left border rounded p-2 hover:bg-gray-50"
+                    onClick={() => focusAction(action)}
+                  >
+                    <div className="text-xs text-gray-500">{action.type}</div>
+                    <div className="font-medium text-sm">{action.title}</div>
+                    {action.dueDate ? <div className="text-xs text-gray-600">마감: {action.dueDate}</div> : null}
+                  </button>
+                ))}
+              </div>
+            )}
+          </aside>
+        </section>
+      ) : null}
 
       <div className="flex gap-2 mb-6">
         <button className={`px-3 py-2 rounded ${tab === "overview" ? "bg-blue-600 text-white" : "border"}`} onClick={() => setTab("overview")}>Overview</button>
@@ -558,14 +693,28 @@ export default function TradeDetailPage() {
             const conditions = [...detail.conditions.filter((c) => c.blockId === block.id)].sort(
               (a, b) => STATUS_ORDER[a.status] - STATUS_ORDER[b.status]
             );
+            const blockSummary = summaryByBlockId.get(block.id);
             const canFinalApprove = myRole === block.finalApproverRole && block.status === "READY_FOR_FINAL_APPROVAL";
             return (
-              <div key={block.id} className="border rounded p-4 space-y-3">
+              <div id={`block-${block.id}`} key={block.id} className="border rounded p-4 space-y-3">
                 <div className="flex items-center gap-2">
                   <span className="text-xs px-2 py-1 rounded bg-gray-100">{block.status}</span>
                   <span className="text-sm text-gray-600">Due Date: {block.dueDate}</span>
-                  {block.extendedDueDate ? <span className="text-sm text-red-600">Extended: {block.extendedDueDate}</span> : null}
+                  {block.extendedDueDate ? <span className="text-sm text-red-600">연기됨: {block.extendedDueDate}</span> : null}
                 </div>
+                {blockSummary ? (
+                  <div className="space-y-1">
+                    <div className="text-xs text-gray-600">
+                      Confirmed {blockSummary.confirmedCount} / Required {blockSummary.requiredCount} ({blockSummary.progressPct}%)
+                    </div>
+                    <div className="h-2 bg-gray-200 rounded">
+                      <div className="h-2 bg-green-500 rounded" style={{ width: `${blockSummary.progressPct}%` }} />
+                    </div>
+                    <div className="text-xs text-gray-500">
+                      SUBMITTED {blockSummary.submittedCount} / REJECTED {blockSummary.rejectedCount}
+                    </div>
+                  </div>
+                ) : null}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                   <input className="border rounded p-2" value={blockEditById[block.id]?.title ?? ""} onChange={(e) => setBlockEditById((prev) => ({ ...prev, [block.id]: { ...prev[block.id], title: e.target.value } }))} />
                   <input className="border rounded p-2" type="date" value={blockEditById[block.id]?.startDate ?? ""} onChange={(e) => setBlockEditById((prev) => ({ ...prev, [block.id]: { ...prev[block.id], startDate: e.target.value } }))} />
