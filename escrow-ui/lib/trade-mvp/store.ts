@@ -27,11 +27,20 @@ const memory = {
   logs: [] as MvpAuditLog[],
   events: [] as MvpTransactionEvent[],
   notifications: [] as MvpNotification[],
+  emailQueue: [] as EmailQueueRow[],
 };
 
 type ConditionAnswerPayload = {
   text: string;
   attachments: string[];
+};
+type EmailQueueRow = {
+  id: string;
+  toEmail: string;
+  subject: string;
+  body: string;
+  status: "PENDING" | "SENT" | "FAILED";
+  createdAt: string;
 };
 
 function nowIso(): string {
@@ -112,54 +121,133 @@ async function appendAuditLog(params: {
   );
 }
 
-async function createTransactionEvent(params: {
+function mapEventToAuditAction(eventType: TransactionEventType): AuditAction | null {
+  switch (eventType) {
+    case "INVITE_SENT":
+      return "INVITE_CREATED";
+    case "INVITE_ACCEPTED":
+      return "INVITE_ACCEPTED";
+    case "CONDITION_SUBMITTED":
+      return "CONDITION_SUBMITTED";
+    case "CONDITION_RESUBMITTED":
+      return "CONDITION_RESUBMITTED";
+    case "CONDITION_REJECTED":
+      return "CONDITION_REJECTED";
+    case "CONDITION_CONFIRMED":
+      return "CONDITION_CONFIRMED";
+    case "BLOCK_FINAL_APPROVED":
+      return "BLOCK_FINAL_APPROVED";
+    default:
+      return null;
+  }
+}
+
+async function enqueueEmail(params: { toEmail: string; subject: string; body: string }) {
+  if (!params.toEmail) return;
+  if (!isDatabaseConfigured()) {
+    memory.emailQueue.push({
+      id: crypto.randomUUID(),
+      toEmail: params.toEmail,
+      subject: params.subject,
+      body: params.body,
+      status: "PENDING",
+      createdAt: nowIso(),
+    });
+    return;
+  }
+  await query(
+    `INSERT INTO email_queue (id, to_email, subject, body, status, created_at)
+     VALUES ($1, $2, $3, $4, 'PENDING', now())`,
+    [crypto.randomUUID(), params.toEmail, params.subject, params.body]
+  );
+}
+
+async function getUserEmailById(userId: string): Promise<string | null> {
+  if (!userId) return null;
+  if (!isDatabaseConfigured()) {
+    return memory.users.find((u) => u.id === userId)?.email ?? null;
+  }
+  const rows = await query<{ email: string }>(
+    `SELECT email FROM escrow_mvp_users WHERE id = $1 LIMIT 1`,
+    [userId]
+  );
+  return rows.rows[0]?.email ?? null;
+}
+
+export async function createTransactionEvent(params: {
   tradeId: string;
   blockId?: string | null;
   conditionId?: string | null;
   actorUserId?: string | null;
   eventType: TransactionEventType;
-  payloadJson?: Record<string, unknown>;
+  payload?: Record<string, unknown>;
 }) {
+  const payloadJson = params.payload ?? {};
+  let event: MvpTransactionEvent;
   if (!isDatabaseConfigured()) {
-    const event: MvpTransactionEvent = {
+    event = {
       id: crypto.randomUUID(),
       tradeId: params.tradeId,
       blockId: params.blockId ?? null,
       conditionId: params.conditionId ?? null,
       actorUserId: params.actorUserId ?? null,
       eventType: params.eventType,
-      payloadJson: params.payloadJson ?? null,
+      payloadJson,
       createdAt: nowIso(),
     };
     memory.events.push(event);
-    return event;
+  } else {
+    const result = await query<{ id: string; created_at: string }>(
+      `INSERT INTO transaction_events
+       (id, trade_id, block_id, condition_id, actor_user_id, event_type, payload_json, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, now())
+       RETURNING id, created_at`,
+      [
+        crypto.randomUUID(),
+        params.tradeId,
+        params.blockId ?? null,
+        params.conditionId ?? null,
+        params.actorUserId ?? null,
+        params.eventType,
+        JSON.stringify(payloadJson),
+      ]
+    );
+    const row = result.rows[0];
+    event = {
+      id: row.id,
+      tradeId: params.tradeId,
+      blockId: params.blockId ?? null,
+      conditionId: params.conditionId ?? null,
+      actorUserId: params.actorUserId ?? null,
+      eventType: params.eventType,
+      payloadJson,
+      createdAt: row.created_at,
+    };
   }
-  const result = await query<{ id: string; created_at: string }>(
-    `INSERT INTO transaction_events
-     (id, trade_id, block_id, condition_id, actor_user_id, event_type, payload_json, created_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, now())
-     RETURNING id, created_at`,
-    [
-      crypto.randomUUID(),
-      params.tradeId,
-      params.blockId ?? null,
-      params.conditionId ?? null,
-      params.actorUserId ?? null,
-      params.eventType,
-      JSON.stringify(params.payloadJson ?? {}),
-    ]
-  );
-  const row = result.rows[0];
-  return {
-    id: row.id,
+
+  await generateNotifications({
+    eventType: params.eventType,
     tradeId: params.tradeId,
     blockId: params.blockId ?? null,
     conditionId: params.conditionId ?? null,
     actorUserId: params.actorUserId ?? null,
-    eventType: params.eventType,
-    payloadJson: params.payloadJson ?? null,
-    createdAt: row.created_at,
-  } as MvpTransactionEvent;
+    payload: payloadJson,
+  });
+
+  const auditAction = mapEventToAuditAction(params.eventType);
+  if (auditAction) {
+    await appendAuditLog({
+      tradeId: params.tradeId,
+      action: auditAction,
+      actorUserId: params.actorUserId ?? null,
+      meta: {
+        blockId: params.blockId ?? null,
+        conditionId: params.conditionId ?? null,
+        ...payloadJson,
+      },
+    });
+  }
+  return event;
 }
 
 async function createNotification(params: {
@@ -183,6 +271,14 @@ async function createNotification(params: {
       isRead: false,
       createdAt: nowIso(),
     });
+    const email = await getUserEmailById(params.userId);
+    if (email) {
+      await enqueueEmail({
+        toEmail: email,
+        subject: `[Escrow] ${params.type}`,
+        body: params.message,
+      });
+    }
     return;
   }
   await query(
@@ -199,6 +295,14 @@ async function createNotification(params: {
       params.message,
     ]
   );
+  const email = await getUserEmailById(params.userId);
+  if (email) {
+    await enqueueEmail({
+      toEmail: email,
+      subject: `[Escrow] ${params.type}`,
+      body: params.message,
+    });
+  }
 }
 
 async function listAcceptedUserIdsByRole(tradeId: string, role: MvpRole): Promise<string[]> {
@@ -430,6 +534,7 @@ export async function createTrade(params: { title: string; description?: string;
       createdAt: r.created_at,
     } as MvpTrade;
   });
+  return created;
 }
 
 export async function listMyTrades(userId: string): Promise<MvpTrade[]> {
@@ -730,23 +835,11 @@ export async function createInvite(params: {
       createdAt: nowIso(),
     };
     memory.invites.push(invite);
-    await appendAuditLog({
-      tradeId: params.tradeId,
-      action: "INVITE_CREATED",
-      actorUserId: params.actorUserId,
-      meta: { inviteId: invite.id, inviteType: params.inviteType, inviteTarget: params.inviteTarget, role: params.role },
-    });
     await createTransactionEvent({
       tradeId: params.tradeId,
       actorUserId: params.actorUserId,
       eventType: "INVITE_SENT",
-      payloadJson: { inviteId: invite.id, role: params.role, invitedUserId: invitedUser?.id ?? null },
-    });
-    await generateNotifications({
-      eventType: "INVITE_SENT",
-      tradeId: params.tradeId,
-      actorUserId: params.actorUserId,
-      payload: { invitedUserId: invitedUser?.id ?? null },
+      payload: { inviteId: invite.id, role: params.role, invitedUserId: invitedUser?.id ?? null },
     });
     return invite;
   }
@@ -765,29 +858,13 @@ export async function createInvite(params: {
        VALUES ($1, $2, $3, $4, 'PENDING', now())`,
       [inviteId, params.tradeId, participantId, token]
     );
-    await client.query(
-      `INSERT INTO escrow_mvp_audit_logs (id, trade_id, action, actor_user_id, meta, created_at)
-       VALUES ($1, $2, 'INVITE_CREATED', $3, $4, now())`,
-      [
-        crypto.randomUUID(),
-        params.tradeId,
-        params.actorUserId,
-        { inviteId, inviteType: params.inviteType, inviteTarget: params.inviteTarget, role: params.role },
-      ]
-    );
     return { id: inviteId, tradeId: params.tradeId, participantId, token, status: "PENDING", createdAt: nowIso() } as MvpInvite;
   });
   await createTransactionEvent({
     tradeId: params.tradeId,
     actorUserId: params.actorUserId,
     eventType: "INVITE_SENT",
-    payloadJson: { inviteId: created.id, role: params.role, invitedUserId: invitedUser?.id ?? null },
-  });
-  await generateNotifications({
-    eventType: "INVITE_SENT",
-    tradeId: params.tradeId,
-    actorUserId: params.actorUserId,
-    payload: { invitedUserId: invitedUser?.id ?? null },
+    payload: { inviteId: created.id, role: params.role, invitedUserId: invitedUser?.id ?? null },
   });
   return created;
 }
@@ -887,23 +964,11 @@ export async function acceptInvite(token: string, userId: string) {
     invite.status = "ACCEPTED";
     participant.status = "ACCEPTED";
     participant.userId = userId;
-    await appendAuditLog({
-      tradeId: info.trade.id,
-      action: "INVITE_ACCEPTED",
-      actorUserId: userId,
-      meta: { inviteId: invite.id, participantId: participant.id },
-    });
     await createTransactionEvent({
       tradeId: info.trade.id,
       actorUserId: userId,
       eventType: "INVITE_ACCEPTED",
-      payloadJson: { inviteId: invite.id, participantId: participant.id, notifyUserId: info.trade.createdBy },
-    });
-    await generateNotifications({
-      eventType: "INVITE_ACCEPTED",
-      tradeId: info.trade.id,
-      actorUserId: userId,
-      payload: { notifyUserId: info.trade.createdBy },
+      payload: { inviteId: invite.id, participantId: participant.id, notifyUserId: info.trade.createdBy },
     });
     return { invite, participant };
   }
@@ -915,24 +980,13 @@ export async function acceptInvite(token: string, userId: string) {
        WHERE id = $2`,
       [userId, info.participant.id]
     );
-    await client.query(
-      `INSERT INTO escrow_mvp_audit_logs (id, trade_id, action, actor_user_id, meta, created_at)
-       VALUES ($1, $2, 'INVITE_ACCEPTED', $3, $4, now())`,
-      [crypto.randomUUID(), info.trade.id, userId, { inviteId: info.invite.id, participantId: info.participant.id }]
-    );
     return { inviteId: info.invite.id, participantId: info.participant.id };
   });
   await createTransactionEvent({
     tradeId: info.trade.id,
     actorUserId: userId,
     eventType: "INVITE_ACCEPTED",
-    payloadJson: { inviteId: info.invite.id, participantId: info.participant.id, notifyUserId: info.trade.createdBy },
-  });
-  await generateNotifications({
-    eventType: "INVITE_ACCEPTED",
-    tradeId: info.trade.id,
-    actorUserId: userId,
-    payload: { notifyUserId: info.trade.createdBy },
+    payload: { inviteId: info.invite.id, participantId: info.participant.id, notifyUserId: info.trade.createdBy },
   });
   return result;
 }
@@ -1217,26 +1271,12 @@ export async function confirmCondition(params: {
       const next = ensureBlockStatusFromConditions(block, blockConditions);
       Object.assign(block, next);
     }
-    await appendAuditLog({
-      tradeId: params.tradeId,
-      action: "CONDITION_CONFIRMED",
-      actorUserId: params.actorUserId,
-      meta: { blockId: params.blockId, conditionId: params.conditionId },
-    });
     await createTransactionEvent({
       tradeId: params.tradeId,
       blockId: params.blockId,
       conditionId: params.conditionId,
       actorUserId: params.actorUserId,
       eventType: "CONDITION_CONFIRMED",
-      payloadJson: { assignedRole: condition.assignedRole },
-    });
-    await generateNotifications({
-      eventType: "CONDITION_CONFIRMED",
-      tradeId: params.tradeId,
-      blockId: params.blockId,
-      conditionId: params.conditionId,
-      actorUserId: params.actorUserId,
       payload: { assignedRole: condition.assignedRole },
     });
     if (block?.status === "READY_FOR_FINAL_APPROVAL") {
@@ -1245,13 +1285,6 @@ export async function confirmCondition(params: {
         blockId: params.blockId,
         actorUserId: params.actorUserId,
         eventType: "BLOCK_READY_FOR_FINAL_APPROVAL",
-        payloadJson: { finalApproverRole: block.finalApproverRole },
-      });
-      await generateNotifications({
-        eventType: "BLOCK_READY_FOR_FINAL_APPROVAL",
-        tradeId: params.tradeId,
-        blockId: params.blockId,
-        actorUserId: params.actorUserId,
         payload: { finalApproverRole: block.finalApproverRole },
       });
     }
@@ -1303,26 +1336,12 @@ export async function confirmCondition(params: {
     `SELECT status, final_approver_role FROM escrow_mvp_blocks WHERE id = $1 AND trade_id = $2 LIMIT 1`,
     [params.blockId, params.tradeId]
   );
-  await appendAuditLog({
-    tradeId: params.tradeId,
-    action: "CONDITION_CONFIRMED",
-    actorUserId: params.actorUserId,
-    meta: { blockId: params.blockId, conditionId: params.conditionId },
-  });
   await createTransactionEvent({
     tradeId: params.tradeId,
     blockId: params.blockId,
     conditionId: params.conditionId,
     actorUserId: params.actorUserId,
     eventType: "CONDITION_CONFIRMED",
-    payloadJson: { assignedRole: condition.assignedRole },
-  });
-  await generateNotifications({
-    eventType: "CONDITION_CONFIRMED",
-    tradeId: params.tradeId,
-    blockId: params.blockId,
-    conditionId: params.conditionId,
-    actorUserId: params.actorUserId,
     payload: { assignedRole: condition.assignedRole },
   });
   const blockRow = blockState.rows[0];
@@ -1332,13 +1351,6 @@ export async function confirmCondition(params: {
       blockId: params.blockId,
       actorUserId: params.actorUserId,
       eventType: "BLOCK_READY_FOR_FINAL_APPROVAL",
-      payloadJson: { finalApproverRole: blockRow.final_approver_role },
-    });
-    await generateNotifications({
-      eventType: "BLOCK_READY_FOR_FINAL_APPROVAL",
-      tradeId: params.tradeId,
-      blockId: params.blockId,
-      actorUserId: params.actorUserId,
       payload: { finalApproverRole: blockRow.final_approver_role },
     });
   }
@@ -1392,12 +1404,6 @@ export async function submitCondition(params: {
     target.rejectedBy = null;
     target.rejectedAt = null;
     target.answerJson = answerJson;
-    await appendAuditLog({
-      tradeId: params.tradeId,
-      action: params.isResubmit || condition.status === "REJECTED" ? "CONDITION_RESUBMITTED" : "CONDITION_SUBMITTED",
-      actorUserId: params.actorUserId,
-      meta: { blockId: params.blockId, conditionId: params.conditionId },
-    });
     const eventType = params.isResubmit || condition.status === "REJECTED" ? "CONDITION_RESUBMITTED" : "CONDITION_SUBMITTED";
     await createTransactionEvent({
       tradeId: params.tradeId,
@@ -1405,14 +1411,6 @@ export async function submitCondition(params: {
       conditionId: params.conditionId,
       actorUserId: params.actorUserId,
       eventType,
-      payloadJson: { confirmerRole: condition.confirmerRole },
-    });
-    await generateNotifications({
-      eventType,
-      tradeId: params.tradeId,
-      blockId: params.blockId,
-      conditionId: params.conditionId,
-      actorUserId: params.actorUserId,
       payload: { confirmerRole: condition.confirmerRole },
     });
     return { ...target, answer: answerJson };
@@ -1433,12 +1431,6 @@ export async function submitCondition(params: {
     [params.conditionId, params.blockId, JSON.stringify(answerJson)]
   );
   if (!updated.rows[0]) throw new Error("Condition not found or cannot be submitted");
-  await appendAuditLog({
-    tradeId: params.tradeId,
-    action: params.isResubmit || condition.status === "REJECTED" ? "CONDITION_RESUBMITTED" : "CONDITION_SUBMITTED",
-    actorUserId: params.actorUserId,
-    meta: { blockId: params.blockId, conditionId: params.conditionId },
-  });
   const eventType = params.isResubmit || condition.status === "REJECTED" ? "CONDITION_RESUBMITTED" : "CONDITION_SUBMITTED";
   await createTransactionEvent({
     tradeId: params.tradeId,
@@ -1446,14 +1438,6 @@ export async function submitCondition(params: {
     conditionId: params.conditionId,
     actorUserId: params.actorUserId,
     eventType,
-    payloadJson: { confirmerRole: condition.confirmerRole },
-  });
-  await generateNotifications({
-    eventType,
-    tradeId: params.tradeId,
-    blockId: params.blockId,
-    conditionId: params.conditionId,
-    actorUserId: params.actorUserId,
     payload: { confirmerRole: condition.confirmerRole },
   });
   return { id: params.conditionId, status: "SUBMITTED" as const, answer: answerJson };
@@ -1490,32 +1474,17 @@ export async function rejectConditionWithExtension(params: {
       block.dueDate = params.newDueDate;
       block.status = "IN_PROGRESS";
     }
-    await appendAuditLog({
-      tradeId: params.tradeId,
-      action: "CONDITION_REJECTED",
-      actorUserId: params.actorUserId,
-      meta: {
-        blockId: params.blockId,
-        conditionId: params.conditionId,
-        rejectReason: params.rejectReason.trim(),
-        newDueDate: params.newDueDate,
-      },
-    });
     await createTransactionEvent({
       tradeId: params.tradeId,
       blockId: params.blockId,
       conditionId: params.conditionId,
       actorUserId: params.actorUserId,
       eventType: "CONDITION_REJECTED",
-      payloadJson: { assignedRole: condition.assignedRole, rejectReason: params.rejectReason.trim() },
-    });
-    await generateNotifications({
-      eventType: "CONDITION_REJECTED",
-      tradeId: params.tradeId,
-      blockId: params.blockId,
-      conditionId: params.conditionId,
-      actorUserId: params.actorUserId,
-      payload: { assignedRole: condition.assignedRole },
+      payload: {
+        assignedRole: condition.assignedRole,
+        rejectReason: params.rejectReason.trim(),
+        newDueDate: params.newDueDate,
+      },
     });
     return target;
   }
@@ -1538,21 +1507,6 @@ export async function rejectConditionWithExtension(params: {
        WHERE id = $2 AND trade_id = $3`,
       [params.newDueDate, params.blockId, params.tradeId]
     );
-    await client.query(
-      `INSERT INTO escrow_mvp_audit_logs (id, trade_id, action, actor_user_id, meta, created_at)
-       VALUES ($1, $2, 'CONDITION_REJECTED', $3, $4, now())`,
-      [
-        crypto.randomUUID(),
-        params.tradeId,
-        params.actorUserId,
-        {
-          blockId: params.blockId,
-          conditionId: params.conditionId,
-          rejectReason: params.rejectReason.trim(),
-          newDueDate: params.newDueDate,
-        },
-      ]
-    );
   });
   await createTransactionEvent({
     tradeId: params.tradeId,
@@ -1560,15 +1514,11 @@ export async function rejectConditionWithExtension(params: {
     conditionId: params.conditionId,
     actorUserId: params.actorUserId,
     eventType: "CONDITION_REJECTED",
-    payloadJson: { assignedRole: condition.assignedRole, rejectReason: params.rejectReason.trim() },
-  });
-  await generateNotifications({
-    eventType: "CONDITION_REJECTED",
-    tradeId: params.tradeId,
-    blockId: params.blockId,
-    conditionId: params.conditionId,
-    actorUserId: params.actorUserId,
-    payload: { assignedRole: condition.assignedRole },
+    payload: {
+      assignedRole: condition.assignedRole,
+      rejectReason: params.rejectReason.trim(),
+      newDueDate: params.newDueDate,
+    },
   });
   return { id: params.conditionId, status: "REJECTED" as const };
 }
@@ -1587,18 +1537,12 @@ export async function finalApproveBlock(params: { tradeId: string; blockId: stri
   if (!isDatabaseConfigured()) {
     const target = memory.blocks.find((b) => b.id === params.blockId)!;
     target.status = "APPROVED";
-    await appendAuditLog({
-      tradeId: params.tradeId,
-      action: "BLOCK_FINAL_APPROVED",
-      actorUserId: params.actorUserId,
-      meta: { blockId: params.blockId },
-    });
     await createTransactionEvent({
       tradeId: params.tradeId,
       blockId: params.blockId,
       actorUserId: params.actorUserId,
       eventType: "BLOCK_FINAL_APPROVED",
-      payloadJson: {},
+      payload: {},
     });
     return target;
   }
@@ -1623,18 +1567,12 @@ export async function finalApproveBlock(params: { tradeId: string; blockId: stri
   );
   const row = updated.rows[0];
   if (!row) throw new Error("Block not found or not ready for final approval");
-  await appendAuditLog({
-    tradeId: params.tradeId,
-    action: "BLOCK_FINAL_APPROVED",
-    actorUserId: params.actorUserId,
-    meta: { blockId: params.blockId },
-  });
   await createTransactionEvent({
     tradeId: params.tradeId,
     blockId: params.blockId,
     actorUserId: params.actorUserId,
     eventType: "BLOCK_FINAL_APPROVED",
-    payloadJson: {},
+    payload: {},
   });
   return {
     id: row.id,
@@ -1965,6 +1903,86 @@ export async function listNotifications(userId: string): Promise<MvpNotification
     isRead: row.is_read,
     createdAt: row.created_at,
   }));
+}
+
+export async function markNotificationsRead(userId: string, notificationIds?: string[]) {
+  if (!isDatabaseConfigured()) {
+    memory.notifications.forEach((notification) => {
+      const isMine = notification.userId === userId;
+      const matched = !notificationIds || notificationIds.length === 0 || notificationIds.includes(notification.id);
+      if (isMine && matched) notification.isRead = true;
+    });
+    return;
+  }
+  if (!notificationIds || notificationIds.length === 0) {
+    await query(
+      `UPDATE notifications
+       SET is_read = true
+       WHERE user_id = $1 AND is_read = false`,
+      [userId]
+    );
+    return;
+  }
+  await query(
+    `UPDATE notifications
+     SET is_read = true
+     WHERE user_id = $1
+       AND id = ANY($2::uuid[])
+       AND is_read = false`,
+    [userId, notificationIds]
+  );
+}
+
+export async function getEmailQueueStats() {
+  if (!isDatabaseConfigured()) {
+    const pending = memory.emailQueue.filter((row) => row.status === "PENDING").length;
+    const sent = memory.emailQueue.filter((row) => row.status === "SENT").length;
+    const failed = memory.emailQueue.filter((row) => row.status === "FAILED").length;
+    return { pending, sent, failed };
+  }
+  const rows = await query<{ status: string; count: string }>(
+    `SELECT status, count(*)::text AS count
+     FROM email_queue
+     GROUP BY status`
+  );
+  const counts = new Map(rows.rows.map((row) => [row.status, Number(row.count)]));
+  return {
+    pending: counts.get("PENDING") ?? 0,
+    sent: counts.get("SENT") ?? 0,
+    failed: counts.get("FAILED") ?? 0,
+  };
+}
+
+export async function processEmailQueue(limit = 20) {
+  if (!isDatabaseConfigured()) {
+    let processed = 0;
+    for (const row of memory.emailQueue) {
+      if (processed >= limit) break;
+      if (row.status !== "PENDING") continue;
+      row.status = "SENT";
+      processed += 1;
+    }
+    return { processed };
+  }
+
+  const rows = await query<{ id: string; to_email: string; subject: string; body: string }>(
+    `SELECT id, to_email, subject, body
+     FROM email_queue
+     WHERE status = 'PENDING'
+     ORDER BY created_at ASC
+     LIMIT $1`,
+    [limit]
+  );
+  for (const row of rows.rows) {
+    try {
+      // MVP stage: external provider 연결 전, 큐 처리 성공으로 상태만 반영한다.
+      console.info(`[email-worker] send -> ${row.to_email} / ${row.subject}`);
+      await query(`UPDATE email_queue SET status = 'SENT' WHERE id = $1`, [row.id]);
+    } catch {
+      await query(`UPDATE email_queue SET status = 'FAILED' WHERE id = $1`, [row.id]);
+    }
+  }
+  return { processed: rows.rows.length };
 }
 
 export async function listFinalApprovalWaiting(userId: string): Promise<

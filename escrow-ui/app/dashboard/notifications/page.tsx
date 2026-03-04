@@ -16,20 +16,44 @@ type NotificationItem = {
 export default function DashboardNotificationsPage() {
   const [items, setItems] = useState<NotificationItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [marking, setMarking] = useState(false);
 
   useEffect(() => {
     void (async () => {
       setLoading(true);
-      const res = await fetch("/api/dashboard/notifications", { cache: "no-store" });
+      const res = await fetch("/api/notifications", { cache: "no-store" });
       const json = await res.json().catch(() => ({}));
       setItems(res.ok && json.ok ? (json.data as NotificationItem[]) : []);
       setLoading(false);
     })();
   }, []);
 
+  async function markAllAsRead() {
+    setMarking(true);
+    const res = await fetch("/api/notifications/read", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    if (res.ok) {
+      setItems((prev) => prev.map((item) => ({ ...item, isRead: true })));
+    }
+    setMarking(false);
+  }
+
   return (
     <section className="space-y-3">
-      <h1 className="text-xl font-semibold">Notifications</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-xl font-semibold">Notifications</h1>
+        <button
+          type="button"
+          className="text-sm px-3 py-1.5 rounded border bg-white hover:bg-gray-50 disabled:opacity-60"
+          onClick={markAllAsRead}
+          disabled={marking || items.length === 0}
+        >
+          {marking ? "처리 중..." : "모두 읽음"}
+        </button>
+      </div>
       {loading ? <p className="text-sm text-gray-500">Loading...</p> : null}
       {!loading && items.length === 0 ? (
         <p className="text-sm text-gray-500">알림이 없습니다.</p>

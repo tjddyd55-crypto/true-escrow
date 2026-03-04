@@ -23,6 +23,7 @@ export type AuditAction =
   | "BLOCK_FINAL_APPROVED";
 
 export type TransactionEventType =
+  | "TRADE_ACTIVATED"
   | "CONDITION_SUBMITTED"
   | "CONDITION_RESUBMITTED"
   | "CONDITION_REJECTED"
