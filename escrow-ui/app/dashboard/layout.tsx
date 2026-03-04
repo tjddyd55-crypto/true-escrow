@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { usePathname } from "next/navigation";
 
-type BadgeState = { pendingApprovals: number; myTasks: number; finalApprovalWaiting: number; inviteCount: number };
+type BadgeState = { pendingApprovals: number; myTasks: number; finalApprovalWaiting: number; inviteCount: number; unreadNotifications: number };
 
 const GROUPS: Array<{
   title: string;
@@ -45,6 +45,10 @@ const GROUPS: Array<{
       { href: "/dashboard/invitations/sent", label: "Sent Invites" },
     ],
   },
+  {
+    title: "Notifications",
+    items: [{ href: "/dashboard/notifications", label: "Notifications", badge: "unreadNotifications" }],
+  },
 ];
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -54,6 +58,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     myTasks: 0,
     finalApprovalWaiting: 0,
     inviteCount: 0,
+    unreadNotifications: 0,
   });
 
   useEffect(() => {
@@ -67,8 +72,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               myTasks: Number(json.data?.myTasks ?? 0),
               finalApprovalWaiting: Number(json.data?.finalApprovalWaiting ?? 0),
               inviteCount: Number(json.data?.inviteCount ?? 0),
+              unreadNotifications: Number(json.data?.unreadNotifications ?? 0),
             }
-          : { pendingApprovals: 0, myTasks: 0, finalApprovalWaiting: 0, inviteCount: 0 }
+          : { pendingApprovals: 0, myTasks: 0, finalApprovalWaiting: 0, inviteCount: 0, unreadNotifications: 0 }
       );
     })();
   }, [pathname]);

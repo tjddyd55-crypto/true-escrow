@@ -30,6 +30,11 @@ type TradeSummary = {
     dueDate: string | null;
   }>;
 };
+type EventItem = {
+  id: string;
+  eventType: string;
+  createdAt: string;
+};
 
 const STEPS: StepperStatus[] = ["DRAFT", "ACTIVE", "IN_PROGRESS", "READY_FOR_FINAL_APPROVAL", "COMPLETED"];
 
@@ -79,7 +84,7 @@ function StatusStepper({ current }: { current: StepperStatus }) {
   );
 }
 
-function EngineSummaryPanel({ summary }: { summary: TradeSummary }) {
+function EngineSummaryPanel({ summary, events }: { summary: TradeSummary; events: EventItem[] }) {
   function focusAction(action: TradeSummary["myNextActions"][number]) {
     const targetId = action.conditionId ? `condition-${action.conditionId}` : `block-${action.blockId}`;
     const el = document.getElementById(targetId);
@@ -138,6 +143,19 @@ function EngineSummaryPanel({ summary }: { summary: TradeSummary }) {
           </article>
         ))}
       </section>
+      <section className="space-y-2">
+        <h2 className="font-semibold">Activity Timeline</h2>
+        {events.length === 0 ? (
+          <p className="text-sm text-gray-500">이벤트가 없습니다.</p>
+        ) : (
+          events.slice(0, 20).map((event) => (
+            <div key={event.id} className="text-sm border rounded p-2 bg-white">
+              <span className="font-medium">{event.eventType}</span>
+              <span className="text-gray-500 text-xs ml-2">{event.createdAt}</span>
+            </div>
+          ))
+        )}
+      </section>
     </main>
   );
 }
@@ -148,16 +166,19 @@ export default function TransactionDetailPage() {
   const [resolved, setResolved] = useState(false);
   const [isMvpTrade, setIsMvpTrade] = useState(false);
   const [summary, setSummary] = useState<TradeSummary | null>(null);
+  const [events, setEvents] = useState<EventItem[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     void (async () => {
-      const [kindRes, summaryRes] = await Promise.all([
+      const [kindRes, summaryRes, eventsRes] = await Promise.all([
         fetch(`/api/transactions/${id}`, { cache: "no-store" }),
         fetch(`/api/transactions/${id}/summary`, { cache: "no-store" }),
+        fetch(`/api/transactions/${id}/events`, { cache: "no-store" }),
       ]);
       const kindJson = await kindRes.json().catch(() => ({}));
       const summaryJson = await summaryRes.json().catch(() => ({}));
+      const eventsJson = await eventsRes.json().catch(() => ({}));
       if (!kindRes.ok) {
         setError(kindJson?.error ?? "거래 정보를 찾을 수 없습니다.");
         setResolved(true);
@@ -165,13 +186,14 @@ export default function TransactionDetailPage() {
       }
       setIsMvpTrade(kindJson?.data?.kind === "MVP");
       setSummary(summaryRes.ok && summaryJson.ok ? (summaryJson.data as TradeSummary) : null);
+      setEvents(eventsRes.ok && eventsJson.ok ? (eventsJson.data?.events as EventItem[]) ?? [] : []);
       setResolved(true);
     })();
   }, [id]);
 
   if (!resolved) return <main className="max-w-5xl mx-auto p-6">Loading...</main>;
   if (error) return <main className="max-w-5xl mx-auto p-6 text-red-600">{error}</main>;
-  if (!isMvpTrade && summary) return <EngineSummaryPanel summary={summary} />;
+  if (!isMvpTrade && summary) return <EngineSummaryPanel summary={summary} events={events} />;
   if (!isMvpTrade) return <main className="max-w-5xl mx-auto p-6">Loading...</main>;
   return <TradeDetailPage />;
 }

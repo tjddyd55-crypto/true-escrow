@@ -8,10 +8,13 @@ import type {
   MvpBlock,
   MvpCondition,
   MvpInvite,
+  MvpNotification,
   MvpParticipant,
   MvpRole,
   MvpTrade,
+  MvpTransactionEvent,
   MvpUser,
+  TransactionEventType,
 } from "./types";
 
 const memory = {
@@ -22,6 +25,8 @@ const memory = {
   blocks: [] as MvpBlock[],
   conditions: [] as MvpCondition[],
   logs: [] as MvpAuditLog[],
+  events: [] as MvpTransactionEvent[],
+  notifications: [] as MvpNotification[],
 };
 
 type ConditionAnswerPayload = {
@@ -105,6 +110,204 @@ async function appendAuditLog(params: {
      VALUES ($1, $2, $3, $4, $5, now())`,
     [crypto.randomUUID(), params.tradeId, params.action, params.actorUserId ?? null, params.meta ?? {}]
   );
+}
+
+async function createTransactionEvent(params: {
+  tradeId: string;
+  blockId?: string | null;
+  conditionId?: string | null;
+  actorUserId?: string | null;
+  eventType: TransactionEventType;
+  payloadJson?: Record<string, unknown>;
+}) {
+  if (!isDatabaseConfigured()) {
+    const event: MvpTransactionEvent = {
+      id: crypto.randomUUID(),
+      tradeId: params.tradeId,
+      blockId: params.blockId ?? null,
+      conditionId: params.conditionId ?? null,
+      actorUserId: params.actorUserId ?? null,
+      eventType: params.eventType,
+      payloadJson: params.payloadJson ?? null,
+      createdAt: nowIso(),
+    };
+    memory.events.push(event);
+    return event;
+  }
+  const result = await query<{ id: string; created_at: string }>(
+    `INSERT INTO transaction_events
+     (id, trade_id, block_id, condition_id, actor_user_id, event_type, payload_json, created_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, now())
+     RETURNING id, created_at`,
+    [
+      crypto.randomUUID(),
+      params.tradeId,
+      params.blockId ?? null,
+      params.conditionId ?? null,
+      params.actorUserId ?? null,
+      params.eventType,
+      JSON.stringify(params.payloadJson ?? {}),
+    ]
+  );
+  const row = result.rows[0];
+  return {
+    id: row.id,
+    tradeId: params.tradeId,
+    blockId: params.blockId ?? null,
+    conditionId: params.conditionId ?? null,
+    actorUserId: params.actorUserId ?? null,
+    eventType: params.eventType,
+    payloadJson: params.payloadJson ?? null,
+    createdAt: row.created_at,
+  } as MvpTransactionEvent;
+}
+
+async function createNotification(params: {
+  userId: string;
+  tradeId: string;
+  blockId?: string | null;
+  conditionId?: string | null;
+  type: string;
+  message: string;
+}) {
+  if (!params.userId) return;
+  if (!isDatabaseConfigured()) {
+    memory.notifications.push({
+      id: crypto.randomUUID(),
+      userId: params.userId,
+      tradeId: params.tradeId,
+      blockId: params.blockId ?? null,
+      conditionId: params.conditionId ?? null,
+      type: params.type,
+      message: params.message,
+      isRead: false,
+      createdAt: nowIso(),
+    });
+    return;
+  }
+  await query(
+    `INSERT INTO notifications
+     (id, user_id, trade_id, block_id, condition_id, type, message, is_read, created_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, false, now())`,
+    [
+      crypto.randomUUID(),
+      params.userId,
+      params.tradeId,
+      params.blockId ?? null,
+      params.conditionId ?? null,
+      params.type,
+      params.message,
+    ]
+  );
+}
+
+async function listAcceptedUserIdsByRole(tradeId: string, role: MvpRole): Promise<string[]> {
+  if (!isDatabaseConfigured()) {
+    return memory.participants
+      .filter((p) => p.tradeId === tradeId && p.status === "ACCEPTED" && p.role === role && p.userId)
+      .map((p) => p.userId as string);
+  }
+  const rows = await query<{ user_id: string }>(
+    `SELECT user_id
+     FROM escrow_mvp_trade_participants
+     WHERE trade_id = $1 AND role = $2 AND status = 'ACCEPTED' AND user_id IS NOT NULL`,
+    [tradeId, role]
+  );
+  return rows.rows.map((r) => r.user_id);
+}
+
+async function generateNotifications(params: {
+  eventType: TransactionEventType;
+  tradeId: string;
+  blockId?: string | null;
+  conditionId?: string | null;
+  actorUserId?: string | null;
+  payload?: Record<string, unknown>;
+}) {
+  const payload = params.payload ?? {};
+  if (params.eventType === "CONDITION_SUBMITTED" || params.eventType === "CONDITION_RESUBMITTED") {
+    const role = payload.confirmerRole as MvpRole | undefined;
+    if (!role) return;
+    const userIds = await listAcceptedUserIdsByRole(params.tradeId, role);
+    await Promise.all(
+      userIds
+        .filter((id) => id !== params.actorUserId)
+        .map((userId) =>
+          createNotification({
+            userId,
+            tradeId: params.tradeId,
+            blockId: params.blockId,
+            conditionId: params.conditionId,
+            type: params.eventType,
+            message: "제출된 조건을 확인하고 승인/반려해 주세요.",
+          })
+        )
+    );
+    return;
+  }
+  if (params.eventType === "CONDITION_REJECTED" || params.eventType === "CONDITION_CONFIRMED") {
+    const role = payload.assignedRole as MvpRole | undefined;
+    if (!role) return;
+    const userIds = await listAcceptedUserIdsByRole(params.tradeId, role);
+    await Promise.all(
+      userIds
+        .filter((id) => id !== params.actorUserId)
+        .map((userId) =>
+          createNotification({
+            userId,
+            tradeId: params.tradeId,
+            blockId: params.blockId,
+            conditionId: params.conditionId,
+            type: params.eventType,
+            message:
+              params.eventType === "CONDITION_REJECTED"
+                ? "조건이 반려되었습니다. 수정 후 재제출해 주세요."
+                : "조건이 승인되었습니다.",
+          })
+        )
+    );
+    return;
+  }
+  if (params.eventType === "BLOCK_READY_FOR_FINAL_APPROVAL") {
+    const role = payload.finalApproverRole as MvpRole | undefined;
+    if (!role) return;
+    const userIds = await listAcceptedUserIdsByRole(params.tradeId, role);
+    await Promise.all(
+      userIds.map((userId) =>
+        createNotification({
+          userId,
+          tradeId: params.tradeId,
+          blockId: params.blockId,
+          type: params.eventType,
+          message: "블록이 최종 승인 대기 상태입니다. 최종 승인해 주세요.",
+        })
+      )
+    );
+    return;
+  }
+  if (params.eventType === "INVITE_SENT") {
+    const invitedUserId = (payload.invitedUserId as string | undefined) ?? null;
+    if (!invitedUserId) return;
+    await createNotification({
+      userId: invitedUserId,
+      tradeId: params.tradeId,
+      blockId: null,
+      conditionId: null,
+      type: params.eventType,
+      message: "새로운 거래 초대를 받았습니다.",
+    });
+    return;
+  }
+  if (params.eventType === "INVITE_ACCEPTED") {
+    const notifyUserId = (payload.notifyUserId as string | undefined) ?? null;
+    if (!notifyUserId || notifyUserId === params.actorUserId) return;
+    await createNotification({
+      userId: notifyUserId,
+      tradeId: params.tradeId,
+      type: params.eventType,
+      message: "초대가 수락되었습니다.",
+    });
+  }
 }
 
 export async function signup(params: { email: string; password: string; name?: string }) {
@@ -200,7 +403,7 @@ export async function createTrade(params: { title: string; description?: string;
     });
     return trade;
   }
-  return withTransaction(async (client) => {
+  const created = await withTransaction(async (client) => {
     const tradeId = crypto.randomUUID();
     await client.query(
       `INSERT INTO escrow_mvp_trades (id, title, description, created_by, status, created_at)
@@ -494,6 +697,18 @@ export async function createInvite(params: {
   const actorRole = await getParticipantRole(params.tradeId, params.actorUserId);
   if (!actorRole) throw new Error("Only participants can invite");
   const token = crypto.randomUUID();
+  const invitedTarget = params.inviteTarget.trim();
+  const invitedUser =
+    params.inviteType === "EMAIL"
+      ? !isDatabaseConfigured()
+        ? memory.users.find((u) => u.email === invitedTarget.toLowerCase()) ?? null
+        : (
+            await query<{ id: string }>(
+              `SELECT id FROM escrow_mvp_users WHERE lower(email) = lower($1) LIMIT 1`,
+              [invitedTarget]
+            )
+          ).rows[0] ?? null
+      : null;
   if (!isDatabaseConfigured()) {
     const participant: MvpParticipant = {
       id: crypto.randomUUID(),
@@ -502,7 +717,7 @@ export async function createInvite(params: {
       role: params.role,
       status: "INVITED",
       inviteType: params.inviteType,
-      inviteTarget: params.inviteTarget.trim(),
+      inviteTarget: invitedTarget,
       createdAt: nowIso(),
     };
     memory.participants.push(participant);
@@ -521,16 +736,28 @@ export async function createInvite(params: {
       actorUserId: params.actorUserId,
       meta: { inviteId: invite.id, inviteType: params.inviteType, inviteTarget: params.inviteTarget, role: params.role },
     });
+    await createTransactionEvent({
+      tradeId: params.tradeId,
+      actorUserId: params.actorUserId,
+      eventType: "INVITE_SENT",
+      payloadJson: { inviteId: invite.id, role: params.role, invitedUserId: invitedUser?.id ?? null },
+    });
+    await generateNotifications({
+      eventType: "INVITE_SENT",
+      tradeId: params.tradeId,
+      actorUserId: params.actorUserId,
+      payload: { invitedUserId: invitedUser?.id ?? null },
+    });
     return invite;
   }
-  return withTransaction(async (client) => {
+  const created = await withTransaction(async (client) => {
     const participantId = crypto.randomUUID();
     const inviteId = crypto.randomUUID();
     await client.query(
       `INSERT INTO escrow_mvp_trade_participants
        (id, trade_id, user_id, role, status, invite_type, invite_target, created_at)
        VALUES ($1, $2, NULL, $3, 'INVITED', $4, $5, now())`,
-      [participantId, params.tradeId, params.role, params.inviteType, params.inviteTarget.trim()]
+      [participantId, params.tradeId, params.role, params.inviteType, invitedTarget]
     );
     await client.query(
       `INSERT INTO escrow_mvp_invites
@@ -550,6 +777,19 @@ export async function createInvite(params: {
     );
     return { id: inviteId, tradeId: params.tradeId, participantId, token, status: "PENDING", createdAt: nowIso() } as MvpInvite;
   });
+  await createTransactionEvent({
+    tradeId: params.tradeId,
+    actorUserId: params.actorUserId,
+    eventType: "INVITE_SENT",
+    payloadJson: { inviteId: created.id, role: params.role, invitedUserId: invitedUser?.id ?? null },
+  });
+  await generateNotifications({
+    eventType: "INVITE_SENT",
+    tradeId: params.tradeId,
+    actorUserId: params.actorUserId,
+    payload: { invitedUserId: invitedUser?.id ?? null },
+  });
+  return created;
 }
 
 export async function getInviteByToken(token: string) {
@@ -653,9 +893,21 @@ export async function acceptInvite(token: string, userId: string) {
       actorUserId: userId,
       meta: { inviteId: invite.id, participantId: participant.id },
     });
+    await createTransactionEvent({
+      tradeId: info.trade.id,
+      actorUserId: userId,
+      eventType: "INVITE_ACCEPTED",
+      payloadJson: { inviteId: invite.id, participantId: participant.id, notifyUserId: info.trade.createdBy },
+    });
+    await generateNotifications({
+      eventType: "INVITE_ACCEPTED",
+      tradeId: info.trade.id,
+      actorUserId: userId,
+      payload: { notifyUserId: info.trade.createdBy },
+    });
     return { invite, participant };
   }
-  return withTransaction(async (client) => {
+  const result = await withTransaction(async (client) => {
     await client.query(`UPDATE escrow_mvp_invites SET status = 'ACCEPTED' WHERE id = $1`, [info.invite.id]);
     await client.query(
       `UPDATE escrow_mvp_trade_participants
@@ -670,6 +922,19 @@ export async function acceptInvite(token: string, userId: string) {
     );
     return { inviteId: info.invite.id, participantId: info.participant.id };
   });
+  await createTransactionEvent({
+    tradeId: info.trade.id,
+    actorUserId: userId,
+    eventType: "INVITE_ACCEPTED",
+    payloadJson: { inviteId: info.invite.id, participantId: info.participant.id, notifyUserId: info.trade.createdBy },
+  });
+  await generateNotifications({
+    eventType: "INVITE_ACCEPTED",
+    tradeId: info.trade.id,
+    actorUserId: userId,
+    payload: { notifyUserId: info.trade.createdBy },
+  });
+  return result;
 }
 
 export async function declineInvite(token: string, userId: string) {
@@ -958,6 +1223,38 @@ export async function confirmCondition(params: {
       actorUserId: params.actorUserId,
       meta: { blockId: params.blockId, conditionId: params.conditionId },
     });
+    await createTransactionEvent({
+      tradeId: params.tradeId,
+      blockId: params.blockId,
+      conditionId: params.conditionId,
+      actorUserId: params.actorUserId,
+      eventType: "CONDITION_CONFIRMED",
+      payloadJson: { assignedRole: condition.assignedRole },
+    });
+    await generateNotifications({
+      eventType: "CONDITION_CONFIRMED",
+      tradeId: params.tradeId,
+      blockId: params.blockId,
+      conditionId: params.conditionId,
+      actorUserId: params.actorUserId,
+      payload: { assignedRole: condition.assignedRole },
+    });
+    if (block?.status === "READY_FOR_FINAL_APPROVAL") {
+      await createTransactionEvent({
+        tradeId: params.tradeId,
+        blockId: params.blockId,
+        actorUserId: params.actorUserId,
+        eventType: "BLOCK_READY_FOR_FINAL_APPROVAL",
+        payloadJson: { finalApproverRole: block.finalApproverRole },
+      });
+      await generateNotifications({
+        eventType: "BLOCK_READY_FOR_FINAL_APPROVAL",
+        tradeId: params.tradeId,
+        blockId: params.blockId,
+        actorUserId: params.actorUserId,
+        payload: { finalApproverRole: block.finalApproverRole },
+      });
+    }
     return target;
   }
   const updated = await query<{
@@ -1002,12 +1299,49 @@ export async function confirmCondition(params: {
      WHERE b.id = $1 AND b.trade_id = $2`,
     [params.blockId, params.tradeId]
   );
+  const blockState = await query<{ status: string; final_approver_role: MvpRole }>(
+    `SELECT status, final_approver_role FROM escrow_mvp_blocks WHERE id = $1 AND trade_id = $2 LIMIT 1`,
+    [params.blockId, params.tradeId]
+  );
   await appendAuditLog({
     tradeId: params.tradeId,
     action: "CONDITION_CONFIRMED",
     actorUserId: params.actorUserId,
     meta: { blockId: params.blockId, conditionId: params.conditionId },
   });
+  await createTransactionEvent({
+    tradeId: params.tradeId,
+    blockId: params.blockId,
+    conditionId: params.conditionId,
+    actorUserId: params.actorUserId,
+    eventType: "CONDITION_CONFIRMED",
+    payloadJson: { assignedRole: condition.assignedRole },
+  });
+  await generateNotifications({
+    eventType: "CONDITION_CONFIRMED",
+    tradeId: params.tradeId,
+    blockId: params.blockId,
+    conditionId: params.conditionId,
+    actorUserId: params.actorUserId,
+    payload: { assignedRole: condition.assignedRole },
+  });
+  const blockRow = blockState.rows[0];
+  if (blockRow?.status === "READY_FOR_FINAL_APPROVAL") {
+    await createTransactionEvent({
+      tradeId: params.tradeId,
+      blockId: params.blockId,
+      actorUserId: params.actorUserId,
+      eventType: "BLOCK_READY_FOR_FINAL_APPROVAL",
+      payloadJson: { finalApproverRole: blockRow.final_approver_role },
+    });
+    await generateNotifications({
+      eventType: "BLOCK_READY_FOR_FINAL_APPROVAL",
+      tradeId: params.tradeId,
+      blockId: params.blockId,
+      actorUserId: params.actorUserId,
+      payload: { finalApproverRole: blockRow.final_approver_role },
+    });
+  }
   return {
     id: row.id,
     blockId: row.block_id,
@@ -1064,6 +1398,23 @@ export async function submitCondition(params: {
       actorUserId: params.actorUserId,
       meta: { blockId: params.blockId, conditionId: params.conditionId },
     });
+    const eventType = params.isResubmit || condition.status === "REJECTED" ? "CONDITION_RESUBMITTED" : "CONDITION_SUBMITTED";
+    await createTransactionEvent({
+      tradeId: params.tradeId,
+      blockId: params.blockId,
+      conditionId: params.conditionId,
+      actorUserId: params.actorUserId,
+      eventType,
+      payloadJson: { confirmerRole: condition.confirmerRole },
+    });
+    await generateNotifications({
+      eventType,
+      tradeId: params.tradeId,
+      blockId: params.blockId,
+      conditionId: params.conditionId,
+      actorUserId: params.actorUserId,
+      payload: { confirmerRole: condition.confirmerRole },
+    });
     return { ...target, answer: answerJson };
   }
 
@@ -1087,6 +1438,23 @@ export async function submitCondition(params: {
     action: params.isResubmit || condition.status === "REJECTED" ? "CONDITION_RESUBMITTED" : "CONDITION_SUBMITTED",
     actorUserId: params.actorUserId,
     meta: { blockId: params.blockId, conditionId: params.conditionId },
+  });
+  const eventType = params.isResubmit || condition.status === "REJECTED" ? "CONDITION_RESUBMITTED" : "CONDITION_SUBMITTED";
+  await createTransactionEvent({
+    tradeId: params.tradeId,
+    blockId: params.blockId,
+    conditionId: params.conditionId,
+    actorUserId: params.actorUserId,
+    eventType,
+    payloadJson: { confirmerRole: condition.confirmerRole },
+  });
+  await generateNotifications({
+    eventType,
+    tradeId: params.tradeId,
+    blockId: params.blockId,
+    conditionId: params.conditionId,
+    actorUserId: params.actorUserId,
+    payload: { confirmerRole: condition.confirmerRole },
   });
   return { id: params.conditionId, status: "SUBMITTED" as const, answer: answerJson };
 }
@@ -1133,6 +1501,22 @@ export async function rejectConditionWithExtension(params: {
         newDueDate: params.newDueDate,
       },
     });
+    await createTransactionEvent({
+      tradeId: params.tradeId,
+      blockId: params.blockId,
+      conditionId: params.conditionId,
+      actorUserId: params.actorUserId,
+      eventType: "CONDITION_REJECTED",
+      payloadJson: { assignedRole: condition.assignedRole, rejectReason: params.rejectReason.trim() },
+    });
+    await generateNotifications({
+      eventType: "CONDITION_REJECTED",
+      tradeId: params.tradeId,
+      blockId: params.blockId,
+      conditionId: params.conditionId,
+      actorUserId: params.actorUserId,
+      payload: { assignedRole: condition.assignedRole },
+    });
     return target;
   }
 
@@ -1170,6 +1554,22 @@ export async function rejectConditionWithExtension(params: {
       ]
     );
   });
+  await createTransactionEvent({
+    tradeId: params.tradeId,
+    blockId: params.blockId,
+    conditionId: params.conditionId,
+    actorUserId: params.actorUserId,
+    eventType: "CONDITION_REJECTED",
+    payloadJson: { assignedRole: condition.assignedRole, rejectReason: params.rejectReason.trim() },
+  });
+  await generateNotifications({
+    eventType: "CONDITION_REJECTED",
+    tradeId: params.tradeId,
+    blockId: params.blockId,
+    conditionId: params.conditionId,
+    actorUserId: params.actorUserId,
+    payload: { assignedRole: condition.assignedRole },
+  });
   return { id: params.conditionId, status: "REJECTED" as const };
 }
 
@@ -1192,6 +1592,13 @@ export async function finalApproveBlock(params: { tradeId: string; blockId: stri
       action: "BLOCK_FINAL_APPROVED",
       actorUserId: params.actorUserId,
       meta: { blockId: params.blockId },
+    });
+    await createTransactionEvent({
+      tradeId: params.tradeId,
+      blockId: params.blockId,
+      actorUserId: params.actorUserId,
+      eventType: "BLOCK_FINAL_APPROVED",
+      payloadJson: {},
     });
     return target;
   }
@@ -1221,6 +1628,13 @@ export async function finalApproveBlock(params: { tradeId: string; blockId: stri
     action: "BLOCK_FINAL_APPROVED",
     actorUserId: params.actorUserId,
     meta: { blockId: params.blockId },
+  });
+  await createTransactionEvent({
+    tradeId: params.tradeId,
+    blockId: params.blockId,
+    actorUserId: params.actorUserId,
+    eventType: "BLOCK_FINAL_APPROVED",
+    payloadJson: {},
   });
   return {
     id: row.id,
@@ -1452,18 +1866,105 @@ export async function listMyTasks(userId: string): Promise<
 }
 
 export async function getDashboardBadgeCounts(userId: string) {
-  const [pendingApprovals, myTasks, finalApprovalWaiting, invites] = await Promise.all([
+  const [pendingApprovals, myTasks, finalApprovalWaiting, invites, unreadNotifications] = await Promise.all([
     listPendingApprovals(userId),
     listMyTasks(userId),
     listFinalApprovalWaiting(userId),
     listDashboardInvites(userId),
+    countUnreadNotifications(userId),
   ]);
   return {
     pendingApprovals: pendingApprovals.length,
     myTasks: myTasks.length,
     finalApprovalWaiting: finalApprovalWaiting.length,
     inviteCount: invites.received.length,
+    unreadNotifications,
   };
+}
+
+export async function listTransactionEvents(tradeId: string, userId: string): Promise<MvpTransactionEvent[]> {
+  const detail = await getTradeDetail(tradeId, userId);
+  if (!detail) return [];
+  if (!isDatabaseConfigured()) {
+    return memory.events
+      .filter((event) => event.tradeId === tradeId)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  }
+  const rows = await query<{
+    id: string;
+    trade_id: string;
+    block_id: string | null;
+    condition_id: string | null;
+    actor_user_id: string | null;
+    event_type: TransactionEventType;
+    payload_json: Record<string, unknown> | null;
+    created_at: string;
+  }>(
+    `SELECT id, trade_id, block_id, condition_id, actor_user_id, event_type, payload_json, created_at
+     FROM transaction_events
+     WHERE trade_id = $1
+     ORDER BY created_at DESC`,
+    [tradeId]
+  );
+  return rows.rows.map((row) => ({
+    id: row.id,
+    tradeId: row.trade_id,
+    blockId: row.block_id,
+    conditionId: row.condition_id,
+    actorUserId: row.actor_user_id,
+    eventType: row.event_type,
+    payloadJson: row.payload_json,
+    createdAt: row.created_at,
+  }));
+}
+
+export async function countUnreadNotifications(userId: string): Promise<number> {
+  if (!isDatabaseConfigured()) {
+    return memory.notifications.filter((n) => n.userId === userId && !n.isRead).length;
+  }
+  const rows = await query<{ c: string }>(
+    `SELECT count(*)::text AS c
+     FROM notifications
+     WHERE user_id = $1 AND is_read = false`,
+    [userId]
+  );
+  return Number(rows.rows[0]?.c ?? "0");
+}
+
+export async function listNotifications(userId: string): Promise<MvpNotification[]> {
+  if (!isDatabaseConfigured()) {
+    return memory.notifications
+      .filter((n) => n.userId === userId)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  }
+  const rows = await query<{
+    id: string;
+    user_id: string;
+    trade_id: string;
+    block_id: string | null;
+    condition_id: string | null;
+    type: string;
+    message: string;
+    is_read: boolean;
+    created_at: string;
+  }>(
+    `SELECT id, user_id, trade_id, block_id, condition_id, type, message, is_read, created_at
+     FROM notifications
+     WHERE user_id = $1
+     ORDER BY created_at DESC`,
+    [userId]
+  );
+  return rows.rows.map((row) => ({
+    id: row.id,
+    userId: row.user_id,
+    tradeId: row.trade_id,
+    blockId: row.block_id,
+    conditionId: row.condition_id,
+    type: row.type,
+    message: row.message,
+    isRead: row.is_read,
+    createdAt: row.created_at,
+  }));
 }
 
 export async function listFinalApprovalWaiting(userId: string): Promise<

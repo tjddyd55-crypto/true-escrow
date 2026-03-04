@@ -10,6 +10,13 @@ type BlockStatus = "DRAFT" | "IN_PROGRESS" | "READY_FOR_FINAL_APPROVAL" | "APPRO
 type ConditionAnswer = { text: string; attachments: string[] };
 type StepperStatus = "DRAFT" | "ACTIVE" | "IN_PROGRESS" | "READY_FOR_FINAL_APPROVAL" | "COMPLETED";
 type SummaryActionType = "TASK" | "APPROVAL" | "FINAL";
+type EventItem = {
+  id: string;
+  eventType: string;
+  createdAt: string;
+  blockId?: string | null;
+  conditionId?: string | null;
+};
 
 type TradeDetail = {
   trade: { id: string; title: string; description?: string | null; createdBy: string; createdAt: string; status?: string };
@@ -350,6 +357,7 @@ export default function TradeDetailPage() {
   const [tab, setTab] = useState<Tab>("overview");
   const [detail, setDetail] = useState<TradeDetail | null>(null);
   const [summary, setSummary] = useState<TradeSummary | null>(null);
+  const [events, setEvents] = useState<EventItem[]>([]);
   const [me, setMe] = useState<{ id: string } | null>(null);
   const [inviteForm, setInviteForm] = useState({ inviteType: "EMAIL", inviteTarget: "", role: "SELLER" as Role });
   const [blockDraft, setBlockDraft] = useState<{
@@ -378,14 +386,16 @@ export default function TradeDetailPage() {
   }, [tradeId]);
 
   async function load() {
-    const [meRes, detailRes, summaryRes] = await Promise.all([
+    const [meRes, detailRes, summaryRes, eventsRes] = await Promise.all([
       fetch("/api/me"),
       fetch(`/api/trades/${tradeId}`),
       fetch(`/api/transactions/${tradeId}/summary`),
+      fetch(`/api/transactions/${tradeId}/events`),
     ]);
     const meJson = await meRes.json().catch(() => ({}));
     const detailJson = await detailRes.json().catch(() => ({}));
     const summaryJson = await summaryRes.json().catch(() => ({}));
+    const eventsJson = await eventsRes.json().catch(() => ({}));
     setMe(meJson.ok ? meJson.data : null);
     if (detailRes.ok && detailJson.ok) {
       setDetail(detailJson.data);
@@ -403,6 +413,7 @@ export default function TradeDetailPage() {
       setBlockEditById(nextEdit);
     }
     setSummary(summaryRes.ok && summaryJson.ok ? (summaryJson.data as TradeSummary) : null);
+    setEvents(eventsRes.ok && eventsJson.ok ? (eventsJson.data?.events as EventItem[]) ?? [] : []);
   }
 
   async function refreshSummary() {
@@ -640,6 +651,21 @@ export default function TradeDetailPage() {
           <p className="text-sm text-gray-600">Trade ID: {detail.trade.id}</p>
           <p className="text-sm text-gray-600">내 역할: {myRole ?? "참여 전"}</p>
           <p className="text-sm text-gray-600">Trade Status: {detail.trade.status ?? "DRAFT"}</p>
+          <div className="pt-2">
+            <h3 className="font-medium mb-2">Activity Timeline</h3>
+            {events.length === 0 ? (
+              <p className="text-sm text-gray-500">이벤트가 없습니다.</p>
+            ) : (
+              <div className="space-y-1">
+                {events.slice(0, 20).map((event) => (
+                  <div key={event.id} className="text-sm border rounded p-2 bg-white">
+                    <span className="font-medium">{event.eventType}</span>
+                    <span className="text-gray-500 text-xs ml-2">{event.createdAt}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </section>
       )}
 

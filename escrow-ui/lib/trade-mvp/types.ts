@@ -22,6 +22,16 @@ export type AuditAction =
   | "CONDITION_CONFIRMED"
   | "BLOCK_FINAL_APPROVED";
 
+export type TransactionEventType =
+  | "CONDITION_SUBMITTED"
+  | "CONDITION_RESUBMITTED"
+  | "CONDITION_REJECTED"
+  | "CONDITION_CONFIRMED"
+  | "BLOCK_READY_FOR_FINAL_APPROVAL"
+  | "BLOCK_FINAL_APPROVED"
+  | "INVITE_SENT"
+  | "INVITE_ACCEPTED";
+
 export type MvpUser = {
   id: string;
   email: string;
@@ -103,5 +113,28 @@ export type MvpAuditLog = {
   action: AuditAction;
   actorUserId?: string | null;
   meta?: Record<string, unknown> | null;
+  createdAt: string;
+};
+
+export type MvpTransactionEvent = {
+  id: string;
+  tradeId: string;
+  blockId?: string | null;
+  conditionId?: string | null;
+  actorUserId?: string | null;
+  eventType: TransactionEventType;
+  payloadJson?: Record<string, unknown> | null;
+  createdAt: string;
+};
+
+export type MvpNotification = {
+  id: string;
+  userId: string;
+  tradeId: string;
+  blockId?: string | null;
+  conditionId?: string | null;
+  type: string;
+  message: string;
+  isRead: boolean;
   createdAt: string;
 };
